@@ -1,6 +1,6 @@
 /*
  *  GRUB  --  GRand Unified Bootloader
- *  Copyright (C) 2009  Free Software Foundation, Inc.
+ *  Copyright (C) 2022  Free Software Foundation, Inc.
  *
  *  GRUB is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,23 +15,27 @@
  *  You should have received a copy of the GNU General Public License
  *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
  */
+/* debug.h - declare variables and functions for EFI debugging support */
 
-#ifndef GRUB_EFI_EMU_RUNTIME_HEADER
-#define GRUB_EFI_EMU_RUNTIME_HEADER	1
+#ifndef GRUB_EFI_DEBUG_HEADER
+#define GRUB_EFI_DEBUG_HEADER	1
 
-struct grub_efiemu_ptv_rel
+#include <grub/efi/efi.h>
+#include <grub/misc.h>
+
+
+void grub_efi_register_debug_commands (void);
+
+static inline void
+grub_efi_print_gdb_info (void)
 {
-  grub_uint64_t addr;
-  grub_efi_memory_type_t plustype;
-  grub_efi_memory_type_t minustype;
-  grub_uint32_t size;
-} GRUB_PACKED;
+  grub_addr_t text;
 
-struct efi_variable
-{
-  grub_guid_t guid;
-  grub_uint32_t namelen;
-  grub_uint32_t size;
-  grub_efi_uint32_t attributes;
-} GRUB_PACKED;
-#endif /* ! GRUB_EFI_EMU_RUNTIME_HEADER */
+  text = grub_efi_section_addr (".text");
+  if (!text)
+    return;
+
+  grub_printf ("dynamic_load_symbols %p\n", (void *)text);
+}
+
+#endif /* ! GRUB_EFI_DEBUG_HEADER */

@@ -122,6 +122,7 @@ typedef grub_uint64_t	grub_size_t;
 typedef grub_int64_t	grub_ssize_t;
 
 # define GRUB_SIZE_MAX 18446744073709551615UL
+# define GRUB_SSIZE_MAX 9223372036854775807L
 
 # if GRUB_CPU_SIZEOF_LONG == 8
 #  define PRIxGRUB_SIZE	 "lx"
@@ -140,6 +141,7 @@ typedef grub_uint32_t	grub_size_t;
 typedef grub_int32_t	grub_ssize_t;
 
 # define GRUB_SIZE_MAX 4294967295UL
+# define GRUB_SSIZE_MAX 2147483647L
 
 # define PRIxGRUB_SIZE	"x"
 # define PRIxGRUB_ADDR	"x"
@@ -364,5 +366,14 @@ static inline void grub_set_unaligned64 (void *ptr, grub_uint64_t val)
 #else
 # define grub_absolute_pointer(val) ((void *) (val))
 #endif
+
+struct grub_guid
+{
+  grub_uint32_t data1;
+  grub_uint16_t data2;
+  grub_uint16_t data3;
+  grub_uint8_t data4[8];
+} GRUB_PACKED;
+typedef struct grub_guid grub_guid_t;
 
 #endif /* ! GRUB_TYPES_HEADER */

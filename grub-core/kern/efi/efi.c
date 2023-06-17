@@ -35,12 +35,12 @@ grub_efi_handle_t grub_efi_image_handle;
 /* The pointer to a system table. Filled in by the startup code.  */
 grub_efi_system_table_t *grub_efi_system_table;
 
-static grub_efi_guid_t console_control_guid = GRUB_EFI_CONSOLE_CONTROL_GUID;
-static grub_efi_guid_t loaded_image_guid = GRUB_EFI_LOADED_IMAGE_GUID;
-static grub_efi_guid_t device_path_guid = GRUB_EFI_DEVICE_PATH_GUID;
+static grub_guid_t console_control_guid = GRUB_EFI_CONSOLE_CONTROL_GUID;
+static grub_guid_t loaded_image_guid = GRUB_EFI_LOADED_IMAGE_GUID;
+static grub_guid_t device_path_guid = GRUB_EFI_DEVICE_PATH_GUID;
 
 void *
-grub_efi_locate_protocol (grub_efi_guid_t *protocol, void *registration)
+grub_efi_locate_protocol (grub_guid_t *protocol, void *registration)
 {
   void *interface;
   grub_efi_status_t status;
@@ -59,7 +59,7 @@ grub_efi_locate_protocol (grub_efi_guid_t *protocol, void *registration)
    from the heap.  */
 grub_efi_handle_t *
 grub_efi_locate_handle (grub_efi_locate_search_type_t search_type,
-			grub_efi_guid_t *protocol,
+			grub_guid_t *protocol,
 			void *search_key,
 			grub_efi_uintn_t *num_handles)
 {
@@ -98,7 +98,7 @@ grub_efi_locate_handle (grub_efi_locate_search_type_t search_type,
 
 void *
 grub_efi_open_protocol (grub_efi_handle_t handle,
-			grub_efi_guid_t *protocol,
+			grub_guid_t *protocol,
 			grub_efi_uint32_t attributes)
 {
   grub_efi_boot_services_t *b;
@@ -119,7 +119,7 @@ grub_efi_open_protocol (grub_efi_handle_t handle,
 }
 
 grub_efi_status_t
-grub_efi_close_protocol (grub_efi_handle_t handle, grub_efi_guid_t *protocol)
+grub_efi_close_protocol (grub_efi_handle_t handle, grub_guid_t *protocol)
 {
   grub_efi_boot_services_t *b = grub_efi_system_table->boot_services;
 
@@ -203,29 +203,21 @@ grub_efi_set_virtual_address_map (grub_efi_uintn_t memory_map_size,
 }
 
 grub_err_t
-grub_efi_set_variable(const char *var, const grub_efi_guid_t *guid,
-		      void *data, grub_size_t datasize)
+grub_efi_set_variable_with_attributes (const char *var, const grub_guid_t *guid,
+		      void *data, grub_size_t datasize, grub_efi_uint32_t attributes)
 {
   grub_efi_status_t status;
   grub_efi_runtime_services_t *r;
   grub_efi_char16_t *var16;
-  grub_size_t len, len16;
 
-  len = grub_strlen (var);
-  len16 = len * GRUB_MAX_UTF16_PER_UTF8;
-  var16 = grub_calloc (len16 + 1, sizeof (var16[0]));
-  if (!var16)
+  grub_utf8_to_utf16_alloc (var, &var16, NULL);
+
+  if (var16 == NULL)
     return grub_errno;
-  len16 = grub_utf8_to_utf16 (var16, len16, (grub_uint8_t *) var, len, NULL);
-  var16[len16] = 0;
 
   r = grub_efi_system_table->runtime_services;
 
-  status = r->set_variable (var16, guid,
-			    (GRUB_EFI_VARIABLE_NON_VOLATILE
-			     | GRUB_EFI_VARIABLE_BOOTSERVICE_ACCESS
-			     | GRUB_EFI_VARIABLE_RUNTIME_ACCESS),
-			    datasize, data);
+  status = r->set_variable (var16, guid, attributes, datasize, data);
   grub_free (var16);
   if (status == GRUB_EFI_SUCCESS)
     return GRUB_ERR_NONE;
@@ -233,9 +225,19 @@ grub_efi_set_variable(const char *var, const grub_efi_guid_t *guid,
   return grub_error (GRUB_ERR_IO, "could not set EFI variable `%s'", var);
 }
 
+grub_err_t
+grub_efi_set_variable (const char *var, const grub_guid_t *guid,
+		      void *data, grub_size_t datasize)
+{
+  return grub_efi_set_variable_with_attributes (var, guid, data, datasize,
+			GRUB_EFI_VARIABLE_NON_VOLATILE
+			| GRUB_EFI_VARIABLE_BOOTSERVICE_ACCESS
+			| GRUB_EFI_VARIABLE_RUNTIME_ACCESS);
+}
+
 grub_efi_status_t
 grub_efi_get_variable_with_attributes (const char *var,
-				       const grub_efi_guid_t *guid,
+				       const grub_guid_t *guid,
 				       grub_size_t *datasize_out,
 				       void **data_out,
 				       grub_efi_uint32_t *attributes)
@@ -245,18 +247,13 @@ grub_efi_get_variable_with_attributes (const char *var,
   grub_efi_runtime_services_t *r;
   grub_efi_char16_t *var16;
   void *data;
-  grub_size_t len, len16;
 
   *data_out = NULL;
   *datasize_out = 0;
 
-  len = grub_strlen (var);
-  len16 = len * GRUB_MAX_UTF16_PER_UTF8;
-  var16 = grub_calloc (len16 + 1, sizeof (var16[0]));
-  if (!var16)
-    return GRUB_EFI_OUT_OF_RESOURCES;
-  len16 = grub_utf8_to_utf16 (var16, len16, (grub_uint8_t *) var, len, NULL);
-  var16[len16] = 0;
+  grub_utf8_to_utf16_alloc (var, &var16, NULL);
+  if (var16 == NULL)
+    return grub_errno;
 
   r = grub_efi_system_table->runtime_services;
 
@@ -289,8 +286,30 @@ grub_efi_get_variable_with_attributes (const char *var,
   return status;
 }
 
+grub_err_t
+grub_efi_set_variable_to_string (const char *name, const grub_guid_t *guid,
+			         const char *value, grub_efi_uint32_t attributes)
+{
+  grub_efi_char16_t *value_16;
+  grub_ssize_t len16;
+  grub_err_t status;
+
+  len16 = grub_utf8_to_utf16_alloc (value, &value_16, NULL);
+
+  if (len16 < 0)
+    return grub_errno;
+
+  status = grub_efi_set_variable_with_attributes (name, guid,
+			(void *) value_16, (len16 + 1) * sizeof (value_16[0]),
+			attributes);
+
+  grub_free (value_16);
+
+  return status;
+}
+
 grub_efi_status_t
-grub_efi_get_variable (const char *var, const grub_efi_guid_t *guid,
+grub_efi_get_variable (const char *var, const grub_guid_t *guid,
 		       grub_size_t *datasize_out, void **data_out)
 {
   return grub_efi_get_variable_with_attributes (var, guid, datasize_out, data_out, NULL);
@@ -301,7 +320,7 @@ grub_efi_get_variable (const char *var, const grub_efi_guid_t *guid,
 /* Search the mods section from the PE32/PE32+ image. This code uses
    a PE32 header, but should work with PE32+ as well.  */
 grub_addr_t
-grub_efi_modules_addr (void)
+grub_efi_section_addr (const char *section_name)
 {
   grub_efi_loaded_image_t *image;
   struct grub_msdos_image_header *header;
@@ -330,7 +349,7 @@ grub_efi_modules_addr (void)
        i < coff_header->num_sections;
        i++, section++)
     {
-      if (grub_strcmp (section->name, "mods") == 0)
+      if (grub_strcmp (section->name, section_name) == 0)
 	break;
     }
 
@@ -539,20 +558,7 @@ static void
 dump_vendor_path (const char *type, grub_efi_vendor_device_path_t *vendor)
 {
   grub_uint32_t vendor_data_len = vendor->header.length - sizeof (*vendor);
-  grub_printf ("/%sVendor(%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x)[%x: ",
-	       type,
-	       (unsigned) vendor->vendor_guid.data1,
-	       (unsigned) vendor->vendor_guid.data2,
-	       (unsigned) vendor->vendor_guid.data3,
-	       (unsigned) vendor->vendor_guid.data4[0],
-	       (unsigned) vendor->vendor_guid.data4[1],
-	       (unsigned) vendor->vendor_guid.data4[2],
-	       (unsigned) vendor->vendor_guid.data4[3],
-	       (unsigned) vendor->vendor_guid.data4[4],
-	       (unsigned) vendor->vendor_guid.data4[5],
-	       (unsigned) vendor->vendor_guid.data4[6],
-	       (unsigned) vendor->vendor_guid.data4[7],
-	       vendor_data_len);
+  grub_printf ("/%sVendor(%pG)[%x: ", type, &vendor->vendor_guid, vendor_data_len);
   if (vendor->header.length > sizeof (*vendor))
     {
       grub_uint32_t i;
@@ -923,18 +929,7 @@ grub_efi_print_device_path (grub_efi_device_path_t *dp)
 	      {
 		grub_efi_protocol_device_path_t *proto
 		  = (grub_efi_protocol_device_path_t *) dp;
-		grub_printf ("/Protocol(%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x)",
-			     (unsigned) proto->guid.data1,
-			     (unsigned) proto->guid.data2,
-			     (unsigned) proto->guid.data3,
-			     (unsigned) proto->guid.data4[0],
-			     (unsigned) proto->guid.data4[1],
-			     (unsigned) proto->guid.data4[2],
-			     (unsigned) proto->guid.data4[3],
-			     (unsigned) proto->guid.data4[4],
-			     (unsigned) proto->guid.data4[5],
-			     (unsigned) proto->guid.data4[6],
-			     (unsigned) proto->guid.data4[7]);
+		grub_printf ("/Protocol(%pG)",&proto->guid);
 	      }
 	      break;
 	    default:

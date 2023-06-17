@@ -19,6 +19,7 @@
 
 #include <grub/efi/efi.h>
 #include <grub/efi/console.h>
+#include <grub/efi/debug.h>
 #include <grub/efi/disk.h>
 #include <grub/efi/sb.h>
 #include <grub/lockdown.h>
@@ -36,7 +37,7 @@ static grub_efi_char16_t stack_chk_fail_msg[] =
   L"* GRUB: ABORTED!!! *\r\n"
   L"* GRUB: REBOOTING IN 5 SECONDS... *\r\n";
 
-static grub_efi_guid_t rng_protocol_guid = GRUB_EFI_RNG_PROTOCOL_GUID;
+static grub_guid_t rng_protocol_guid = GRUB_EFI_RNG_PROTOCOL_GUID;
 
 /*
  * Don't put this on grub_efi_init()'s local stack to avoid it
@@ -104,7 +105,7 @@ grub_addr_t grub_modbase;
 void
 grub_efi_init (void)
 {
-  grub_modbase = grub_efi_modules_addr ();
+  grub_modbase = grub_efi_section_addr ("mods");
   /* First of all, initialize the console so that GRUB can display
      messages.  */
   grub_console_init ();
@@ -127,6 +128,8 @@ grub_efi_init (void)
   grub_efi_system_table->boot_services->set_watchdog_timer (0, 0, 0, NULL);
 
   grub_efidisk_init ();
+
+  grub_efi_register_debug_commands ();
 }
 
 void (*grub_efi_net_config) (grub_efi_handle_t hnd,

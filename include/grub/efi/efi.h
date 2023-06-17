@@ -37,18 +37,18 @@ struct linux_arch_kernel_header {
 };
 
 /* Functions.  */
-void *EXPORT_FUNC(grub_efi_locate_protocol) (grub_efi_guid_t *protocol,
+void *EXPORT_FUNC(grub_efi_locate_protocol) (grub_guid_t *protocol,
 					     void *registration);
 grub_efi_handle_t *
 EXPORT_FUNC(grub_efi_locate_handle) (grub_efi_locate_search_type_t search_type,
-				     grub_efi_guid_t *protocol,
+				     grub_guid_t *protocol,
 				     void *search_key,
 				     grub_efi_uintn_t *num_handles);
 void *EXPORT_FUNC(grub_efi_open_protocol) (grub_efi_handle_t handle,
-					   grub_efi_guid_t *protocol,
+					   grub_guid_t *protocol,
 					   grub_efi_uint32_t attributes);
 grub_efi_status_t
-EXPORT_FUNC(grub_efi_close_protocol) (grub_efi_handle_t handle, grub_efi_guid_t *protocol);
+EXPORT_FUNC(grub_efi_close_protocol) (grub_efi_handle_t handle, grub_guid_t *protocol);
 int EXPORT_FUNC(grub_efi_set_text_mode) (int on);
 void EXPORT_FUNC(grub_efi_stall) (grub_efi_uintn_t microseconds);
 void *
@@ -89,19 +89,28 @@ grub_err_t EXPORT_FUNC (grub_efi_set_virtual_address_map) (grub_efi_uintn_t memo
 							   grub_efi_uint32_t descriptor_version,
 							   grub_efi_memory_descriptor_t *virtual_map);
 grub_efi_status_t EXPORT_FUNC (grub_efi_get_variable_with_attributes) (const char *variable,
-								       const grub_efi_guid_t *guid,
+								       const grub_guid_t *guid,
 								       grub_size_t *datasize_out,
 								       void **data_out,
 								       grub_efi_uint32_t *attributes);
 grub_efi_status_t EXPORT_FUNC (grub_efi_get_variable) (const char *variable,
-						       const grub_efi_guid_t *guid,
+						       const grub_guid_t *guid,
 						       grub_size_t *datasize_out,
 						       void **data_out);
 grub_err_t
+EXPORT_FUNC (grub_efi_set_variable_with_attributes) (const char *var,
+				     const grub_guid_t *guid,
+				     void *data,
+				     grub_size_t datasize,
+				     grub_efi_uint32_t attributes);
+grub_err_t
 EXPORT_FUNC (grub_efi_set_variable) (const char *var,
-				     const grub_efi_guid_t *guid,
+				     const grub_guid_t *guid,
 				     void *data,
 				     grub_size_t datasize);
+grub_err_t
+EXPORT_FUNC (grub_efi_set_variable_to_string) (const char *name, const grub_guid_t *guid,
+					       const char *value, grub_efi_uint32_t attributes);
 int
 EXPORT_FUNC (grub_efi_compare_device_paths) (const grub_efi_device_path_t *dp1,
 					     const grub_efi_device_path_t *dp2);
@@ -120,7 +129,7 @@ grub_err_t grub_arch_efi_linux_load_image_header(grub_file_t file,
 grub_err_t grub_arch_efi_linux_boot_image(grub_addr_t addr, grub_size_t size,
                                            char *args);
 
-grub_addr_t grub_efi_modules_addr (void);
+grub_addr_t grub_efi_section_addr (const char *section);
 
 void grub_efi_mm_init (void);
 void grub_efi_mm_fini (void);

@@ -24,6 +24,8 @@
 #include <grub/term.h>
 #include <grub/env.h>
 #include <grub/i18n.h>
+#include <grub/types.h>
+#include <grub/charset.h>
 
 union printf_arg
 {
@@ -34,7 +36,8 @@ union printf_arg
     {
       INT, LONG, LONGLONG,
       UNSIGNED_INT = 3, UNSIGNED_LONG, UNSIGNED_LONGLONG,
-      STRING
+      STRING,
+      GUID
     } type;
   long long ll;
 };
@@ -772,6 +775,9 @@ parse_printf_arg_fmt (const char *fmt0, struct printf_args *args,
       switch (c)
 	{
 	case 'p':
+	  if (*(fmt) == 'G')
+	    ++fmt;
+	  /* Fall through. */
 	case 'x':
 	case 'X':
 	case 'u':
@@ -885,6 +891,10 @@ parse_printf_arg_fmt (const char *fmt0, struct printf_args *args,
 	    args->ptr[curn].type = UNSIGNED_LONGLONG;
 	  else
 	    args->ptr[curn].type = UNSIGNED_INT;
+	  if (*(fmt) == 'G') {
+	    args->ptr[curn].type = GUID;
+	    ++fmt;
+	  }
 	  break;
 	case 's':
 	  args->ptr[curn].type = STRING;
@@ -926,6 +936,7 @@ parse_printf_args (const char *fmt0, struct printf_args *args, va_list args_in)
 	args->ptr[n].ll = va_arg (args_in, long long);
 	break;
       case STRING:
+      case GUID:
 	if (sizeof (void *) == sizeof (long long))
 	  args->ptr[n].ll = va_arg (args_in, long long);
 	else
@@ -941,6 +952,27 @@ write_char (char *str, grub_size_t *count, grub_size_t max_len, unsigned char ch
     str[*count] = ch;
 
   (*count)++;
+}
+
+static void
+write_number (char *str, grub_size_t *count, grub_size_t max_len, grub_size_t format1,
+	     char rightfill, char zerofill, char c, long long value)
+{
+  char tmp[32];
+  const char *p = tmp;
+  grub_size_t len;
+  grub_size_t fill;
+
+  len = grub_lltoa (tmp, c, value) - tmp;
+  fill = len < format1 ? format1 - len : 0;
+  if (! rightfill)
+    while (fill--)
+      write_char (str, count, max_len, zerofill);
+  while (*p)
+    write_char (str, count, max_len, *p++);
+  if (rightfill)
+    while (fill--)
+      write_char (str, count, max_len, zerofill);
 }
 
 static int
@@ -1025,31 +1057,39 @@ grub_vsnprintf_real (char *str, grub_size_t max_len, const char *fmt0,
       switch (c)
 	{
 	case 'p':
-	  write_char (str, &count, max_len, '0');
-	  write_char (str, &count, max_len, 'x');
-	  c = 'x';
+	  if (*(fmt) == 'G')
+	    {
+	      ++fmt;
+	      grub_guid_t *guid = (grub_guid_t *)(grub_addr_t) curarg;
+	      write_number (str, &count, max_len, 8, 0, '0', 'x', guid->data1);
+	      write_char (str, &count, max_len, '-');
+	      write_number (str, &count, max_len, 4, 0, '0', 'x', guid->data2);
+	      write_char (str, &count, max_len, '-');
+	      write_number (str, &count, max_len, 4, 0, '0', 'x', guid->data3);
+	      write_char (str, &count, max_len, '-');
+	      write_number (str, &count, max_len, 2, 0, '0', 'x', guid->data4[0]);
+	      write_number (str, &count, max_len, 2, 0, '0', 'x', guid->data4[1]);
+	      write_char (str, &count, max_len, '-');
+	      write_number (str, &count, max_len, 2, 0, '0', 'x', guid->data4[2]);
+	      write_number (str, &count, max_len, 2, 0, '0', 'x', guid->data4[3]);
+	      write_number (str, &count, max_len, 2, 0, '0', 'x', guid->data4[4]);
+	      write_number (str, &count, max_len, 2, 0, '0', 'x', guid->data4[5]);
+	      write_number (str, &count, max_len, 2, 0, '0', 'x', guid->data4[6]);
+	      write_number (str, &count, max_len, 2, 0, '0', 'x', guid->data4[7]);
+	      break;
+	    }
+	  else
+	    {
+	      write_char (str, &count, max_len, '0');
+	      write_char (str, &count, max_len, 'x');
+	      c = 'x';
+	    }
 	  /* Fall through. */
 	case 'x':
 	case 'X':
 	case 'u':
 	case 'd':
-	  {
-	    char tmp[32];
-	    const char *p = tmp;
-	    grub_size_t len;
-	    grub_size_t fill;
-
-	    len = grub_lltoa (tmp, c, curarg) - tmp;
-	    fill = len < format1 ? format1 - len : 0;
-	    if (! rightfill)
-	      while (fill--)
-		write_char (str, &count, max_len, zerofill);
-	    while (*p)
-	      write_char (str, &count, max_len, *p++);
-	    if (rightfill)
-	      while (fill--)
-		write_char (str, &count, max_len, zerofill);
-	  }
+	  write_number (str, &count, max_len, format1, rightfill, zerofill, c, curarg);
 	  break;
 
 	case 'c':
@@ -1278,6 +1318,37 @@ grub_fatal (const char *fmt, ...)
 
   grub_abort ();
 }
+
+grub_ssize_t
+grub_utf8_to_utf16_alloc (const char *str8, grub_uint16_t **utf16_msg, grub_uint16_t **last_position)
+{
+  grub_size_t len;
+  grub_size_t len16;
+
+  len = grub_strlen (str8);
+
+  /* Check for integer overflow */
+  if (len > GRUB_SSIZE_MAX / GRUB_MAX_UTF16_PER_UTF8 - 1)
+    {
+      grub_error (GRUB_ERR_BAD_ARGUMENT, N_("string too long"));
+      *utf16_msg = NULL;
+      return -1;
+    }
+
+  len16 = len * GRUB_MAX_UTF16_PER_UTF8;
+
+  *utf16_msg = grub_calloc (len16 + 1, sizeof (*utf16_msg[0]));
+  if (*utf16_msg == NULL)
+    return -1;
+
+  len16 = grub_utf8_to_utf16 (*utf16_msg, len16, (grub_uint8_t *) str8, len, NULL);
+
+  if (last_position != NULL)
+    *last_position = *utf16_msg + len16;
+
+  return len16;
+}
+
 
 #if BOOT_TIME_STATS
 

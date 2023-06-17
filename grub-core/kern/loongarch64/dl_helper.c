@@ -24,6 +24,10 @@
 #include <grub/i18n.h>
 #include <grub/loongarch64/reloc.h>
 
+/*
+ * LoongArch relocations documentation:
+ * https://github.com/loongson/la-abi-specs/blob/release/laelf.adoc#relocations
+ */
 static void grub_loongarch64_stack_push (grub_loongarch64_stack_t stack, grub_uint64_t x);
 static grub_uint64_t grub_loongarch64_stack_pop (grub_loongarch64_stack_t stack);
 
@@ -200,14 +204,19 @@ grub_loongarch64_sop_32_s_0_10_10_16_s2 (grub_loongarch64_stack_t stack,
   *place =(*place) | ((a >> 18) & 0x3ff);
 }
 
+/*
+ * B26 relocation for the 28-bit PC-relative jump
+ * (*(uint32_t *) PC) [9 ... 0] = (S + A - PC) [27 ... 18]
+ * (*(uint32_t *) PC) [25 ... 10] = (S + A - PC) [17 ... 2]
+ */
 void grub_loongarch64_b26 (grub_uint32_t *place, grub_int64_t offset)
 {
   grub_uint32_t val;
   const grub_uint32_t insmask = grub_cpu_to_le32_compile_time (0xfc000000);
 
-  grub_dprintf ("dl", "  reloc_xxxx64 %p %c= 0x%llx\n",
+  grub_dprintf ("dl", "  reloc_b26 %p %c= 0x%" PRIxGRUB_INT64_T "\n",
 		place, offset > 0 ? '+' : '-',
-		offset < 0 ? (long long) -(unsigned long long) offset : offset);
+		offset < 0 ? -offset : offset);
 
   val = ((offset >> 18) & 0x3ff) | (((offset >> 2) & 0xffff) << 10);
 
@@ -215,6 +224,10 @@ void grub_loongarch64_b26 (grub_uint32_t *place, grub_int64_t offset)
   *place |= grub_cpu_to_le32 (val) & ~insmask;
 }
 
+/*
+ * ABS_HI20/PCALA_HI20 relocations for 32/64-bit absolute address/PC-relative offset
+ * (*(uint32_t *) PC) [24 ... 5] = (S + A) [31 ... 12]
+ */
 void grub_loongarch64_xxx_hi20 (grub_uint32_t *place, grub_int64_t offset)
 {
   const grub_uint32_t insmask = grub_cpu_to_le32_compile_time (0xfe00001f);
@@ -227,6 +240,10 @@ void grub_loongarch64_xxx_hi20 (grub_uint32_t *place, grub_int64_t offset)
   *place |= grub_cpu_to_le32 (val) & ~insmask;
 }
 
+/*
+ * ABS_LO12/PCALA_LO12 relocations for 32/64-bit absolute address
+ * (*(uint32_t *) PC) [21 ... 10] = (S + A) [11 ... 0]
+ */
 void grub_loongarch64_xxx_lo12 (grub_uint32_t *place, grub_int64_t offset)
 {
   const grub_uint32_t insmask = grub_cpu_to_le32_compile_time (0xffc003ff);
@@ -235,7 +252,11 @@ void grub_loongarch64_xxx_lo12 (grub_uint32_t *place, grub_int64_t offset)
   *place |= grub_cpu_to_le32 (offset << 10) & ~insmask;
 }
 
-void grub_loongarch64_xxx64_hi12 (grub_uint32_t *place, grub_int64_t offset)
+/*
+ * ABS64_HI12 relocation for the 64-bit absolute address
+ * (*(uint32_t *) PC) [21 ... 10] = (S + A) [63 ... 52]
+ */
+void grub_loongarch64_abs64_hi12 (grub_uint32_t *place, grub_int64_t offset)
 {
   const grub_uint32_t insmask = grub_cpu_to_le32_compile_time (0xffc003ff);
   grub_uint32_t val;
@@ -247,7 +268,11 @@ void grub_loongarch64_xxx64_hi12 (grub_uint32_t *place, grub_int64_t offset)
   *place |= grub_cpu_to_le32 (val) & ~insmask;
 }
 
-void grub_loongarch64_xxx64_lo20 (grub_uint32_t *place, grub_int64_t offset)
+/*
+ * ABS64_LO20 relocation for the 64-bit absolute address
+ * (*(uint32_t *) PC) [24 ... 5] = (S + A) [51 ... 32]
+ */
+void grub_loongarch64_abs64_lo20 (grub_uint32_t *place, grub_int64_t offset)
 {
   const grub_uint32_t insmask = grub_cpu_to_le32_compile_time (0xfe00001f);
   grub_uint32_t val;

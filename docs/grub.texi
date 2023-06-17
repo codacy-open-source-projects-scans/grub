@@ -96,12 +96,13 @@ This edition documents version @value{VERSION}.
 * Filesystem::                  Filesystem syntax and semantics
 * Interface::                   The menu and the command-line
 * Environment::                 GRUB environment variables
-* Commands::                    The list of available builtin commands
+* Modules::                     Available modules
+* Commands::                    Available builtin commands
 * Internationalisation::        Topics relating to language support
 * Security::                    Authentication, authorisation, and signatures
-* Platform limitations::        The list of platform-specific limitations
+* Platform limitations::        Platform-specific limitations
 * Platform-specific operations:: Platform-specific operations
-* Supported kernels::           The list of supported kernels
+* Supported kernels::           Supported kernels
 * Troubleshooting::             Error messages produced by GRUB
 * Invoking grub-install::       How to use the GRUB installer
 * Invoking grub-mkconfig::      Generate a GRUB configuration file
@@ -979,7 +980,7 @@ invoke shutdown machinery.
 Operating systems that do not support Multiboot and do not have specific
 support in GRUB (specific support is available for Linux, FreeBSD, NetBSD
 and OpenBSD) must be chain-loaded, which involves loading another boot
-loader and jumping to it in real mode.
+loader and jumping to it in real mode or via the firmware.
 
 The @command{chainloader} command (@pxref{chainloader}) is used to set this
 up.  It is normally also necessary to load some GRUB modules and set the
@@ -3867,9 +3868,31 @@ using BIOS or EFI functions (no ATA, USB or IEEE1275).
 @command{grub-mkconfig} uses this facility to implement
 @samp{GRUB_SAVEDEFAULT} (@pxref{Simple configuration}).
 
+@node Modules
+@chapter Modules
+
+In this chapter, we list all modules that are available in GRUB (currently incomplete).
+
+Modules can be loaded via the @command{insmod} (@pxref{insmod}) command.
+
+@menu
+* bli::
+@end menu
+
+@node bli
+@section bli
+This module provides basic support for the Boot Loader Interface. The Boot
+Loader Interface specifies a set of EFI variables that are used to communicate
+boot-time information between the boot loader and the operating system.
+
+When loaded, the bli module publishes the GPT partition UUID of the EFI System
+Partition used during boot and a string identifying GRUB as the active boot
+loader, including the version number.
+
+This module is only available on UEFI platforms.
 
 @node Commands
-@chapter The list of available commands
+@chapter Available commands
 
 In this chapter, we list all commands that are available in GRUB.
 
@@ -3895,7 +3918,7 @@ shell}.
 
 
 @node Menu-specific commands
-@section The list of commands for the menu only
+@section Commands for the menu only
 
 The semantics used in parsing the configuration file are the following:
 
@@ -3976,7 +3999,7 @@ All options are the same as in the @command{menuentry} command
 
 
 @node Loader commands
-@section The list of various loader commands
+@section Various loader commands
 
 These commands are used to load necessary components to boot desired OS.
 Many of the loader commands are not sufficiently documented. The following is
@@ -4031,10 +4054,13 @@ a list of commands that could use more documentation:
 @node chainloader
 @subsection chainloader
 
-@deffn Command chainloader [@option{--force}] file
+@deffn Command chainloader [@option{--force}] file [args...]
 Load @var{file} as a chain-loader. Like any other file loaded by the
 filesystem code, it can use the blocklist notation (@pxref{Block list
 syntax}) to grab the first sector of the current partition with @samp{+1}.
+On EFI platforms, any arguments after @var{file} will be sent to the loaded
+image.
+
 If you specify the option @option{--force}, then load @var{file} forcibly,
 whether it has a correct signature or not. This is required when you want to
 load a defective boot loader, such as SCO UnixWare 7.1.
@@ -4127,7 +4153,7 @@ This command is only available on AArch64 systems.
 
 
 @node General commands
-@section The list of general commands
+@section General commands
 
 Commands usable anywhere in the menu and in the command-line.
 
@@ -4262,7 +4288,7 @@ printed.
 
 
 @node Command-line commands
-@section The list of command-line commands
+@section Command-line commands
 
 These commands are usable in the command-line and in menu entries.  If
 you forget a command, you can run the command @command{help}
@@ -4298,6 +4324,7 @@ you forget a command, you can run the command @command{help}
 * export::                      Export an environment variable
 * false::                       Do nothing, unsuccessfully
 * fwsetup::                     Reboot into the firmware setup menu
+* gdbinfo::                     Provide info for debugging with GDB
 * gettext::                     Translate a string
 * gptsync::                     Fill an MBR based on GPT entries
 * halt::                        Shut down your computer
@@ -4827,6 +4854,18 @@ such as @code{if} and @code{while} (@pxref{Shell-like scripting}).
 Reboot into the firmware setup menu. If @option{--is-supported} option is
 specified, instead check whether the firmware supports a setup menu and
 exit successfully if so.
+@end deffn
+
+
+@node gdbinfo
+@subsection gdbinfo
+
+@deffn Command gdbinfo
+Output text to be used as a GDB command for a GDB session using the gdb_grub
+script and attached to a running GRUB instance. The GDB command that is
+output will tell GDB how to load debugging symbols to their proper runtime
+address. Currently this is only available for EFI platforms. See the Debugging
+in the developer documentation for more information.
 @end deffn
 
 
@@ -5843,7 +5882,7 @@ Note: The command is not allowed when lockdown is enforced (@pxref{Lockdown}).
 @end deffn
 
 @node Networking commands
-@section The list of networking commands
+@section Networking commands
 
 @menu
 * net_add_addr::                Add a network address
@@ -6058,7 +6097,7 @@ net_set_vlan efinet1 0
 
 
 @node Undocumented commands
-@section The list of commands currently undocumented
+@section Commands currently undocumented
 Unfortunately, not all GRUB commands are documented at this time due to
 developer resource constraints. One way to contribute back to the GRUB
 project would be to help document these commands, and submit patches or

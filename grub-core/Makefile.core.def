@@ -211,6 +211,7 @@ kernel = {
 
   efi = disk/efi/efidisk.c;
   efi = kern/efi/efi.c;
+  efi = kern/efi/debug.c;
   efi = kern/efi/init.c;
   efi = kern/efi/mm.c;
   efi = term/efi/console.c;
@@ -2579,4 +2580,10 @@ module = {
   name = memtools;
   common = commands/memtools.c;
   condition = COND_MM_DEBUG;
+};
+
+module = {
+  name = bli;
+  efi = commands/bli.c;
+  enable = efi;
 };
