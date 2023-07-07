@@ -29,6 +29,7 @@
 #include <grub/efi/fdtload.h>
 #include <grub/efi/memory.h>
 #include <grub/efi/pe32.h>
+#include <grub/efi/sb.h>
 #include <grub/i18n.h>
 #include <grub/lib/cmdline.h>
 #include <grub/verify.h>
@@ -234,7 +235,7 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
   status = b->start_image (image_handle, 0, NULL);
 
   /* When successful, not reached */
-  grub_error (GRUB_ERR_BAD_OS, "start_image() returned %" PRIuGRUB_EFI_UINTN_T, status);
+  grub_error (GRUB_ERR_BAD_OS, "start_image() returned 0x%" PRIxGRUB_EFI_UINTN_T, status);
   grub_efi_free_pages ((grub_addr_t) loaded_image->load_options,
 		       GRUB_EFI_BYTES_TO_PAGES (loaded_image->load_options_size));
 unload:
@@ -251,8 +252,8 @@ grub_linux_boot (void)
     return grub_errno;
 #endif
 
-  return (grub_arch_efi_linux_boot_image((grub_addr_t)kernel_addr,
-                                          kernel_size, linux_args));
+  return grub_arch_efi_linux_boot_image ((grub_addr_t) kernel_addr,
+					 kernel_size, linux_args);
 }
 
 static grub_err_t
@@ -457,6 +458,22 @@ grub_cmd_linux (grub_command_t cmd __attribute__ ((unused)),
   grub_err_t err;
 
   grub_dl_ref (my_mod);
+
+  if (grub_is_shim_lock_enabled () == true)
+    {
+#if defined(__i386__) || defined(__x86_64__)
+      grub_dprintf ("linux", "shim_lock enabled, falling back to legacy Linux kernel loader\n");
+
+      err = grub_cmd_linux_x86_legacy (cmd, argc, argv);
+
+      if (err == GRUB_ERR_NONE)
+	return GRUB_ERR_NONE;
+      else
+	goto fail;
+#else
+      grub_dprintf ("linux", "shim_lock enabled, trying Linux kernel EFI stub loader\n");
+#endif
+    }
 
   if (argc == 0)
     {

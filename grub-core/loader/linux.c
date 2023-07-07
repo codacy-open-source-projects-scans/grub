@@ -64,6 +64,8 @@ make_header (grub_uint8_t *ptr,
   struct newc_head *head = (struct newc_head *) ptr;
   grub_uint8_t *optr;
   grub_size_t oh = 0;
+
+  grub_dprintf ("linux", "newc: Creating path '%s', mode=%s%o, size=%" PRIuGRUB_OFFSET "\n", name, (mode == 0) ? "" : "0", mode, fsize);
   grub_memcpy (head->magic, "070701", 6);
   set_field (head->ino, 0);
   set_field (head->mode, mode);
@@ -106,6 +108,7 @@ insert_dir (const char *name, struct dir **root,
   struct dir *cur, **head = root;
   const char *cb, *ce = name;
   *size = 0;
+
   while (1)
     {
       for (cb = ce; *cb == '/'; cb++);
@@ -114,7 +117,7 @@ insert_dir (const char *name, struct dir **root,
 	break;
 
       for (cur = *root; cur; cur = cur->next)
-	if (grub_memcmp (cur->name, cb, ce - cb)
+	if (grub_memcmp (cur->name, cb, ce - cb) == 0
 	    && cur->name[ce - cb] == 0)
 	  break;
       if (!cur)
@@ -137,7 +140,6 @@ insert_dir (const char *name, struct dir **root,
 		grub_free (n);
 		return grub_errno;
 	      }
-	      grub_dprintf ("linux", "Creating directory %s, %s\n", name, ce);
 	      ptr = make_header (ptr, tmp_name, ce - name + 1,
 				 040777, 0);
 	      grub_free (tmp_name);
