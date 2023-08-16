@@ -225,7 +225,7 @@ case "${grub_modinfo_target_cpu}-${grub_modinfo_platform}" in
 	console=console;;
 esac
 
-timeout=60
+timeout=${GRUB_SHELL_DEFAULT_TIMEOUT:-60}
 mkimage_extra_arg=
 debug=${GRUB_SHELL_DEFAULT_DEBUG:-$GRUB_TEST_DEFAULT_DEBUG}
 
@@ -248,6 +248,8 @@ for option in "$@"; do
 	trim=0 ;;
     --debug)
         debug=$((debug+1)) ;;
+    --debug=*)
+        debug=$((`echo "$option" | sed -e 's/--debug=//'`)) ;;
     --modules=*)
 	ms=`echo "$option" | sed -e 's/--modules=//' -e 's/,/ /g'`
 	modules="$modules $ms" ;;
@@ -422,7 +424,9 @@ fi
 
 if [ x$boot != xnet ] && [ x$boot != xemu ]; then
     pkgdatadir="${builddir}" \
-    exec_show_error "${builddir}/grub-mkrescue" "--output=${isofile}" \
+    exec_show_error "${builddir}/grub-mkrescue" \
+	${debug:+$([ "$debug" -gt 2 ] && echo -n "--verbose")} \
+	"--output=${isofile}" \
 	"--override-directory=${builddir}/grub-core" \
 	--rom-directory="${rom_directory}" \
 	--locale-directory="${srcdir}/po" \
