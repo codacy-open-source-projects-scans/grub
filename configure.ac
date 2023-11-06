@@ -1796,8 +1796,6 @@ CPPFLAGS="$SAVED_CPPFLAGS"
 LDFLAGS="$SAVED_LDFLAGS"
 
 
-DJVU_FONT_SOURCE=
-
 starfield_excuse=
 
 AC_ARG_ENABLE([grub-themes],
@@ -1811,19 +1809,28 @@ if test x"$starfield_excuse" = x && test x"$enable_build_grub_mkfont" = xno ; th
   starfield_excuse="No build-time grub-mkfont"
 fi
 
-if test x"$starfield_excuse" = x; then
-   for ext in pcf pcf.gz bdf bdf.gz ttf ttf.gz; do
-     for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/truetype/ttf-dejavu /usr/share/fonts/dejavu /usr/share/fonts/truetype; do
-        if test -f "$dir/DejaVuSans.$ext"; then
-          DJVU_FONT_SOURCE="$dir/DejaVuSans.$ext"
-          break 2
-        fi
-     done
-   done
+AC_ARG_WITH([dejavufont],
+            AS_HELP_STRING([--with-dejavufont=FILE],
+                           [set the DejeVu source [[guessed]]]))
 
-   if test "x$DJVU_FONT_SOURCE" = x; then
-     starfield_excuse="No DejaVu found"
-   fi
+if test "x$with_dejavufont" = x; then
+  # search in well-known directories
+  if test x"$starfield_excuse" = x; then
+     for ext in pcf pcf.gz bdf bdf.gz ttf ttf.gz; do
+       for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/truetype/ttf-dejavu /usr/share/fonts/dejavu /usr/share/fonts/truetype; do
+          if test -f "$dir/DejaVuSans.$ext"; then
+            DJVU_FONT_SOURCE="$dir/DejaVuSans.$ext"
+            break 2
+          fi
+       done
+     done
+
+     if test "x$DJVU_FONT_SOURCE" = x; then
+       starfield_excuse="No DejaVu found"
+     fi
+  fi
+else
+  DJVU_FONT_SOURCE="$with_dejavufont"
 fi
 
 if test x"$enable_grub_themes" = xyes &&  test x"$starfield_excuse" != x; then
@@ -1832,21 +1839,28 @@ fi
 
 AC_SUBST([DJVU_FONT_SOURCE])
 
-FONT_SOURCE=
+AC_ARG_WITH([unifont],
+            AS_HELP_STRING([--with-unifont=FILE],
+                           [set the unifont source [[guessed]]]))
 
-for ext in pcf pcf.gz bdf bdf.gz ttf ttf.gz; do
-  for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/unifont /usr/share/fonts/uni /usr/share/fonts/truetype/unifont /usr/share/fonts/misc; do
-    if test -f "$dir/unifont.$ext"; then
-      md5="$(md5sum "$dir/unifont.$ext"|awk '{ print $1; }')"
-      # PCF and BDF from version 6.3 isn't hanled properly by libfreetype.
-      if test "$md5" = 0a54834d2788c83886a3e1785a6a1e61 || test "$md5" = 28f2565c7a41d8d407e2551159385edb || test "$md5" = dae5e588461b3b92b87b6ffee734f936 || test "$md5" = 4a3d687aa5bb329ed05f4263a1016791 ; then
-        continue
+if test "x$with_unifont" = x; then
+  # search in well-known directories
+  for ext in pcf pcf.gz bdf bdf.gz ttf ttf.gz; do
+    for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/unifont /usr/share/fonts/uni /usr/share/fonts/truetype/unifont /usr/share/fonts/misc; do
+      if test -f "$dir/unifont.$ext"; then
+        md5="$(md5sum "$dir/unifont.$ext"|awk '{ print $1; }')"
+        # PCF and BDF from version 6.3 isn't hanled properly by libfreetype.
+        if test "$md5" = 0a54834d2788c83886a3e1785a6a1e61 || test "$md5" = 28f2565c7a41d8d407e2551159385edb || test "$md5" = dae5e588461b3b92b87b6ffee734f936 || test "$md5" = 4a3d687aa5bb329ed05f4263a1016791 ; then
+          continue
+        fi
+        FONT_SOURCE="$dir/unifont.$ext"
+        break 2
       fi
-      FONT_SOURCE="$dir/unifont.$ext"
-      break 2
-    fi
+    done
   done
-done
+else
+  FONT_SOURCE="$with_unifont"
+fi
 
 if test x"$enable_build_grub_mkfont" = xno ; then
   FONT_SOURCE=
