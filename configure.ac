@@ -1716,6 +1716,9 @@ if test x"$grub_mkfont_excuse" = x ; then
     CPPFLAGS="$SAVED_CPPFLAGS"
     LIBS="$SAVED_LIBS"
   ], [grub_mkfont_excuse=["need freetype2 library"]])
+  if test x"$grub_mkfont_excuse" = x && test x"$host_kernel" = xnetbsd ; then
+      FREETYPE_LIBS="$FREETYPE_LIBS -Wl,-R,/usr/pkg/lib" ;
+  fi
 fi
 
 if test x"$enable_grub_mkfont" = xyes && test x"$grub_mkfont_excuse" != x ; then
@@ -1770,6 +1773,11 @@ if test x"$grub_build_mkfont_excuse" = x ; then
     LIBS="$SAVED_LIBS"
     CPPFLAGS="$SAVED_CPPFLAGS_2"
   ], [grub_build_mkfont_excuse=["need freetype2 library"]])
+  if test x"$grub_build_mkfont_excuse" = x ; then
+    case x"$build_os" in
+      xnetbsd*) BUILD_FREETYPE_LIBS="$BUILD_FREETYPE_LIBS -Wl,-R,/usr/pkg/lib" ;;
+    esac
+  fi
   PKG_CONFIG="$SAVED_PKG_CONFIG"
 fi
 
@@ -1817,7 +1825,7 @@ if test "x$with_dejavufont" = x; then
   # search in well-known directories
   if test x"$starfield_excuse" = x; then
      for ext in pcf pcf.gz bdf bdf.gz ttf ttf.gz; do
-       for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/truetype/ttf-dejavu /usr/share/fonts/dejavu /usr/share/fonts/truetype; do
+       for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/truetype/ttf-dejavu /usr/share/fonts/dejavu /usr/share/fonts/truetype /usr/pkg/share/fonts/X11/TTF /usr/local/share/fonts/dejavu /usr/X11R6/lib/X11/fonts/TTF; do
           if test -f "$dir/DejaVuSans.$ext"; then
             DJVU_FONT_SOURCE="$dir/DejaVuSans.$ext"
             break 2
@@ -1846,7 +1854,7 @@ AC_ARG_WITH([unifont],
 if test "x$with_unifont" = x; then
   # search in well-known directories
   for ext in pcf pcf.gz bdf bdf.gz ttf ttf.gz; do
-    for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/unifont /usr/share/fonts/uni /usr/share/fonts/truetype/unifont /usr/share/fonts/misc; do
+    for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/unifont /usr/share/fonts/uni /usr/share/fonts/truetype/unifont /usr/share/fonts/misc /usr/pkg/share/fonts/X11/misc /usr/local/share/fonts/gnu-unifont /usr/local/share/fonts/unifont; do
       if test -f "$dir/unifont.$ext"; then
         md5="$(md5sum "$dir/unifont.$ext"|awk '{ print $1; }')"
         # PCF and BDF from version 6.3 isn't hanled properly by libfreetype.
@@ -1997,8 +2005,19 @@ fi
 
 if test x"$libzfs_excuse" = x ; then
   AC_CHECK_LIB([nvpair], [nvlist_lookup_string],
-               [],
-               [libzfs_excuse="need nvpair library"])
+               [have_normal_nvpair=yes],
+               [have_normal_nvpair=no])
+  if test x"$have_normal_nvpair" = xno ; then
+    AC_CHECK_LIB([nvpair], [opensolaris_nvlist_lookup_string],
+                 [have_prefixed_nvpair=yes],
+                 [have_prefixed_nvpair=no])
+    if test x"$have_prefixed_nvpair" = xyes ; then
+      AC_DEFINE([GRUB_UTIL_NVPAIR_IS_PREFIXED], [1],
+            [Define to 1 if libnvpair symbols are prefixed with opensolaris_.])
+    else
+      libzfs_excuse="need nvpair library"
+    fi
+  fi
 fi
 
 if test x"$enable_libzfs" = xyes && test x"$libzfs_excuse" != x ; then
@@ -2008,11 +2027,9 @@ fi
 if test x"$libzfs_excuse" = x ; then
   # We need both libzfs and libnvpair for a successful build.
   LIBZFS="-lzfs"
-  AC_DEFINE([HAVE_LIBZFS], [1],
-            [Define to 1 if you have the ZFS library.])
   LIBNVPAIR="-lnvpair"
-  AC_DEFINE([HAVE_LIBNVPAIR], [1],
-            [Define to 1 if you have the NVPAIR library.])
+  AC_DEFINE([USE_LIBZFS], [1],
+            [Define to 1 if ZFS library should be used.])
 fi
 
 AC_SUBST([LIBZFS])
