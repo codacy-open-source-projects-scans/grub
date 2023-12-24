@@ -34,7 +34,7 @@ dnl "TARGET_" (such as TARGET_CC, TARGET_CFLAGS, etc.) are used for
 dnl the target type. See INSTALL for full list of variables and
 dnl description of the relationships between them.
 
-AC_INIT([GRUB],[2.12~rc1],[bug-grub@gnu.org])
+AC_INIT([GRUB],[2.13],[bug-grub@gnu.org])
 
 AS_CASE(["$ERROR_PLATFORM_NOT_SUPPORT_SSP"],
   [n | no | nO | N | No | NO], [ERROR_PLATFORM_NOT_SUPPORT_SSP=no],
@@ -1438,6 +1438,28 @@ else
     AC_MSG_ERROR([invalid value $enable_stack_protector for --enable-stack-protector])
   fi
   TARGET_CPPFLAGS="$TARGET_CPPFLAGS -DGRUB_STACK_PROTECTOR=1"
+
+  if test -n "$SOURCE_DATE_EPOCH"; then
+     GRUB_STACK_PROTECTOR_INIT="0x00f2b7e2$(printf "%x" "$SOURCE_DATE_EPOCH" | sed 's/.*\(........\)$/\1/')"
+  elif test -r /dev/urandom; then
+     # Generate the 8 byte stack protector canary at build time if /dev/urandom
+     # is able to be read. The first byte should be NUL to filter out string
+     # buffer overflow attacks.
+     GRUB_STACK_PROTECTOR_INIT="$($PYTHON -c 'import codecs; rf=open("/dev/urandom", "rb"); print("0x00"+codecs.encode(rf.read(7), "hex").decode("ascii"))')"
+  else
+    # Some hosts may not have a urandom, e.g. Windows, so use statically
+    # generated random bytes
+    GRUB_STACK_PROTECTOR_INIT="0x00f2b7e2f193b25c"
+  fi
+
+  if test x"$target_m32" = x1 ; then
+    # Make sure that the canary default value is 24-bits by only using the
+    # lower 3 bytes on 32 bit systems. This allows the upper byte to be NUL
+    # to filter out string buffer overflow attacks.
+    GRUB_STACK_PROTECTOR_INIT="0x00$(echo "$GRUB_STACK_PROTECTOR_INIT" | sed 's/.*\(......\)$/\1/')"
+  fi
+
+  AC_SUBST([GRUB_STACK_PROTECTOR_INIT])
 fi
 
 CFLAGS="$TARGET_CFLAGS"
