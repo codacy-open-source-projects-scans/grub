@@ -802,6 +802,17 @@ if test "x$target_cpu" = xmips || test "x$target_cpu" = xmipsel ; then
   if test "x$grub_cv_cc_mflush_func" = xyes; then
     TARGET_CFLAGS="$TARGET_CFLAGS -mflush-func=grub_red_herring"
   fi
+
+  AC_CACHE_CHECK([whether -mno-gpopt works], [grub_cv_cc_mno_gpopt], [
+    CFLAGS="$TARGET_CFLAGS -mno-gpopt -Werror"
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[]])],
+	[grub_cv_cc_mno_gpopt=yes],
+	[grub_cv_cc_mno_gpopt=no])
+  ])
+
+  if test "x$grub_cv_cc_mno_gpopt" = xyes; then
+    TARGET_CFLAGS="$TARGET_CFLAGS -mno-gpopt"
+  fi
 fi
 
 
@@ -1875,7 +1886,7 @@ AC_ARG_WITH([unifont],
 
 if test "x$with_unifont" = x; then
   # search in well-known directories
-  for ext in pcf pcf.gz bdf bdf.gz ttf ttf.gz; do
+  for ext in pcf pcf.gz bdf bdf.gz ttf ttf.gz otf otf.gz; do
     for dir in . /usr/src /usr/share/fonts/X11/misc /usr/share/fonts/unifont /usr/share/fonts/uni /usr/share/fonts/truetype/unifont /usr/share/fonts/misc /usr/pkg/share/fonts/X11/misc /usr/local/share/fonts/gnu-unifont /usr/local/share/fonts/unifont; do
       if test -f "$dir/unifont.$ext"; then
         md5="$(md5sum "$dir/unifont.$ext"|awk '{ print $1; }')"
