@@ -34,7 +34,7 @@ dnl "TARGET_" (such as TARGET_CC, TARGET_CFLAGS, etc.) are used for
 dnl the target type. See INSTALL for full list of variables and
 dnl description of the relationships between them.
 
-AC_INIT([GRUB],[2.13],[bug-grub@gnu.org])
+AC_INIT([GRUB],[2.14~rc1],[bug-grub@gnu.org])
 
 AS_CASE(["$ERROR_PLATFORM_NOT_SUPPORT_SSP"],
   [n | no | nO | N | No | NO], [ERROR_PLATFORM_NOT_SUPPORT_SSP=no],
@@ -53,7 +53,7 @@ save_program_prefix="${program_prefix}"
 AC_CANONICAL_TARGET
 program_prefix="${save_program_prefix}"
 
-AM_INIT_AUTOMAKE([1.11])
+AM_INIT_AUTOMAKE([1.11 tar-ustar])
 AC_PREREQ(2.64)
 AC_CONFIG_SRCDIR([include/grub/dl.h])
 AC_CONFIG_HEADERS([config-util.h])
@@ -76,6 +76,7 @@ grub_TRANSFORM([grub-mkpasswd-pbkdf2])
 grub_TRANSFORM([grub-mkrelpath])
 grub_TRANSFORM([grub-mkrescue])
 grub_TRANSFORM([grub-probe])
+grub_TRANSFORM([grub-protect])
 grub_TRANSFORM([grub-reboot])
 grub_TRANSFORM([grub-script-check])
 grub_TRANSFORM([grub-set-default])
@@ -912,6 +913,31 @@ if test "x$target_cpu" = xloongarch64; then
   TARGET_CCASFLAGS="$TARGET_CCASFLAGS -Wa,-mla-global-with-abs"
 fi
 
+if test "x$target_cpu" = xriscv64 || test "x$target_cpu" = xriscv32; then
+  AC_CACHE_CHECK([for no-relax options], grub_cv_target_cc_mno_relax, [
+    grub_cv_target_cc_mno_relax=no
+    for cand in "-mno-relax" "-Wa,-mno-relax"; do
+      if test x"$grub_cv_target_cc_mno_relax" != xno ; then
+        break
+      fi
+      CFLAGS="$TARGET_CFLAGS $cand -Werror"
+      AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+	    asm (".globl start; start:");
+	    void __main (void);
+	    void __main (void) {}
+	    int main (void);
+	    ]], [[]])], [grub_cv_target_cc_mno_relax="$cand"], [])
+    done
+  ])
+
+  CFLAGS="$TARGET_CFLAGS"
+
+  if test x"$grub_cv_target_cc_mno_relax" != xno ; then
+    TARGET_CFLAGS="$TARGET_CFLAGS $grub_cv_target_cc_mno_relax"
+    TARGET_CCASFLAGS="$TARGET_CCASFLAGS $grub_cv_target_cc_mno_relax"
+  fi
+fi
+
 # GRUB doesn't use float or doubles at all. Yet some toolchains may decide
 # that floats are a good fit to run instead of what's written in the code.
 # Given that floating point unit is disabled (if present to begin with)
@@ -1121,6 +1147,239 @@ AC_CACHE_CHECK([whether -fno-ident works], [grub_cv_cc_fno_ident], [
 if test "x$grub_cv_cc_fno_ident" = xyes; then
   TARGET_CFLAGS="$TARGET_CFLAGS -fno-ident"
 fi
+
+# Implementation of the --disable-amd64-as-feature-detection switch.
+AC_MSG_CHECKING([whether to enable AMD64 as(1) feature detection])
+if test x$target_cpu = xx86_64 -a x$platform = xefi; then
+  CPPFLAGS_GCRY_ASM="-D__x86_64 -DHAVE_CPU_ARCH_X86"
+  AC_ARG_ENABLE(amd64-as-feature-detection,
+    AS_HELP_STRING([--disable-amd64-as-feature-detection],
+      [Disable the auto-detection of AMD64 as(1) features]),
+    [amd64_as_feature_detection=$enableval],
+    [amd64_as_feature_detection=yes])
+else
+  CPPFLAGS_GCRY_ASM=
+  amd64_as_feature_detection=no
+fi
+AC_MSG_RESULT($amd64_as_feature_detection)
+
+#
+# Check whether GCC assembler supports features needed for libgcrypt amd64
+# implementations
+#
+if test $amd64_as_feature_detection = yes; then
+  AC_CACHE_CHECK([whether GCC assembler is compatible for amd64 assembly implementations],
+    [grub_cv_gcc_x86_platform_as_ok],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_x86_platform_as_ok="n/a"
+     else
+       grub_cv_gcc_x86_platform_as_ok=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[__asm__(
+             /* Test if '.type' and '.size' are supported.  */
+             /* These work only on ELF targets. */
+             ".text\n\t"
+             "asmfunc:\n\t"
+             ".size asmfunc,.-asmfunc;\n\t"
+             ".type asmfunc,@function;\n\t"
+             /* Test if assembler allows use of '/' for constant division
+              * (Solaris/x86 issue). If previous constant division check
+              * and "-Wa,--divide" workaround failed, this causes assembly
+              * to be disable on this machine. */
+              "xorl \$(123456789/12345678), %ebp;\n\t"
+         );
+         void asmfunc(void);]], [ asmfunc(); ])],
+       [grub_cv_gcc_x86_platform_as_ok=yes])
+     fi])
+  if test "$grub_cv_gcc_x86_platform_as_ok" = "yes"; then
+    # Define __PIC__ to ensure the assembly code use PIC instructions
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -D__PIC__=1 -DHAVE_COMPATIBLE_GCC_AMD64_PLATFORM_AS"
+  fi
+
+  #
+  # Check whether GCC assembler supports Intel syntax
+  #
+  AC_CACHE_CHECK([whether GCC assembler is compatible for Intel syntax assembly implementations],
+    [grub_cv_gcc_platform_as_ok_for_intel_syntax],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_platform_as_ok_for_intel_syntax="n/a"
+     else
+       grub_cv_gcc_platform_as_ok_for_intel_syntax=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[__asm__(
+             ".intel_syntax noprefix\n\t"
+             ".text\n\t"
+             "actest:\n\t"
+             "pxor xmm1, xmm7;\n\t"
+             "vperm2i128 ymm2, ymm3, ymm0, 1;\n\t"
+             "add eax, ebp;\n\t"
+             "rorx eax, ebp, 1;\n\t"
+             "sub eax, [esp + 4];\n\t"
+             "add dword ptr [esp + eax], 0b10101;\n\t"
+             ".att_syntax prefix\n\t"
+         );
+         void actest(void);]], [ actest(); ])],
+       [grub_cv_gcc_platform_as_ok_for_intel_syntax=yes])
+     fi])
+  if test "$grub_cv_gcc_platform_as_ok_for_intel_syntax" = "yes" ; then
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -DHAVE_INTEL_SYNTAX_PLATFORM_AS"
+  fi
+
+  #
+  # Check whether GCC inline assembler supports SSSE3 instructions
+  #
+  AC_CACHE_CHECK([whether GCC inline assembler supports SSSE3 instructions],
+    [grub_cv_gcc_inline_asm_ssse3],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_inline_asm_ssse3="n/a"
+     else
+       grub_cv_gcc_inline_asm_ssse3=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[static unsigned char be_mask[16] __attribute__ ((aligned (16))) =
+           { 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
+         void a(void) {
+           __asm__("pshufb %[mask], %%xmm2\n\t"::[mask]"m"(*be_mask):);
+         }]], [ a(); ] )],
+       [grub_cv_gcc_inline_asm_ssse3=yes])
+     fi])
+  if test "$grub_cv_gcc_inline_asm_ssse3" = "yes" ; then
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -DHAVE_GCC_INLINE_ASM_SSSE3"
+  fi
+
+  #
+  # Check whether GCC inline assembler supports SHA Extensions instructions.
+  #
+  AC_CACHE_CHECK([whether GCC inline assembler supports SHA Extensions instructions],
+    [grub_cv_gcc_inline_asm_shaext],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_inline_asm_shaext="n/a"
+     else
+       grub_cv_gcc_inline_asm_shaext=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[void a(void) {
+           __asm__("sha1rnds4 \$0, %%xmm1, %%xmm3\n\t":::"cc");
+           __asm__("sha1nexte %%xmm1, %%xmm3\n\t":::"cc");
+           __asm__("sha1msg1 %%xmm1, %%xmm3\n\t":::"cc");
+           __asm__("sha1msg2 %%xmm1, %%xmm3\n\t":::"cc");
+           __asm__("sha256rnds2 %%xmm0, %%xmm1, %%xmm3\n\t":::"cc");
+           __asm__("sha256msg1 %%xmm1, %%xmm3\n\t":::"cc");
+           __asm__("sha256msg2 %%xmm1, %%xmm3\n\t":::"cc");
+         }]], [ a(); ] )],
+       [grub_cv_gcc_inline_asm_shaext=yes])
+     fi])
+  if test "$grub_cv_gcc_inline_asm_shaext" = "yes" ; then
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -DHAVE_GCC_INLINE_ASM_SHAEXT -DENABLE_SHAEXT_SUPPORT"
+  fi
+
+  #
+  # Check whether GCC inline assembler supports SSE4.1 instructions.
+  #
+  AC_CACHE_CHECK([whether GCC inline assembler supports SSE4.1 instructions],
+    [grub_cv_gcc_inline_asm_sse41],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_inline_asm_sse41="n/a"
+     else
+       grub_cv_gcc_inline_asm_sse41=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[void a(void) {
+           int i;
+           __asm__("pextrd \$2, %%xmm0, %[out]\n\t" : [out] "=m" (i));
+         }]], [ a(); ] )],
+       [grub_cv_gcc_inline_asm_sse41=yes])
+     fi])
+  if test "$grub_cv_gcc_inline_asm_sse41" = "yes" ; then
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -DHAVE_GCC_INLINE_ASM_SSE41"
+  fi
+
+  #
+  # Check whether GCC inline assembler supports AVX instructions
+  #
+  AC_CACHE_CHECK([whether GCC inline assembler supports AVX instructions],
+    [grub_cv_gcc_inline_asm_avx],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_inline_asm_avx="n/a"
+     else
+       grub_cv_gcc_inline_asm_avx=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[void a(void) {
+           __asm__("xgetbv; vaesdeclast (%[mem]),%%xmm0,%%xmm7\n\t"::[mem]"r"(0):);
+         }]], [ a(); ] )],
+       [grub_cv_gcc_inline_asm_avx=yes])
+     fi])
+  if test "$grub_cv_gcc_inline_asm_avx" = "yes" ; then
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -DHAVE_GCC_INLINE_ASM_AVX"
+  fi
+
+  #
+  # Check whether GCC inline assembler supports AVX2 instructions
+  #
+  AC_CACHE_CHECK([whether GCC inline assembler supports AVX2 instructions],
+    [grub_cv_gcc_inline_asm_avx2],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_inline_asm_avx2="n/a"
+     else
+       grub_cv_gcc_inline_asm_avx2=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[void a(void) {
+           __asm__("xgetbv; vpbroadcastb %%xmm7,%%ymm1\n\t":::"cc");
+         }]], [ a(); ] )],
+       [grub_cv_gcc_inline_asm_avx2=yes])
+     fi])
+  if test "$grub_cv_gcc_inline_asm_avx2" = "yes" ; then
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -DHAVE_GCC_INLINE_ASM_AVX2"
+  fi
+
+  #
+  # Check whether GCC inline assembler supports AVX512 instructions
+  #
+  AC_CACHE_CHECK([whether GCC inline assembler supports AVX512 instructions],
+    [grub_cv_gcc_inline_asm_avx512],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_inline_asm_avx512="n/a"
+     else
+       grub_cv_gcc_inline_asm_avx512=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[void a(void) {
+           __asm__("xgetbv; vpopcntq %%zmm7, %%zmm1%{%%k1%}%{z%};\n\t":::"cc");
+           __asm__("vpexpandb %%zmm3, %%zmm1;\n\t":::"cc");
+           __asm__("vpxorq %%xmm7, %%xmm7, %%xmm7;\n\t":::"cc");
+           __asm__("vpxorq %%ymm7, %%ymm7, %%ymm7;\n\t":::"cc");
+           __asm__("vpxorq (%%eax)%{1to8%}, %%zmm7, %%zmm7;\n\t":::"cc");
+         }]], [ a(); ] )],
+       [grub_cv_gcc_inline_asm_avx512=yes])
+     fi])
+  if test "$grub_cv_gcc_inline_asm_avx512" = "yes" ; then
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -DHAVE_GCC_INLINE_ASM_AVX512"
+  fi
+
+  #
+  # Check whether GCC inline assembler supports BMI2 instructions
+  #
+  AC_CACHE_CHECK([whether GCC inline assembler supports BMI2 instructions],
+    [grub_cv_gcc_inline_asm_bmi2],
+    [if test "$target_cpu" != "x86_64" ; then
+       grub_cv_gcc_inline_asm_bmi2="n/a"
+     else
+       grub_cv_gcc_inline_asm_bmi2=no
+       AC_LINK_IFELSE([AC_LANG_PROGRAM(
+       [[unsigned int a(unsigned int x, unsigned int y) {
+           unsigned int tmp1, tmp2;
+           asm ("rorxl %2, %1, %0"
+                : "=r" (tmp1)
+                : "rm0" (x), "J" (32 - ((23) & 31)));
+           asm ("andnl %2, %1, %0"
+                : "=r" (tmp2)
+                : "r0" (x), "rm" (y));
+           return tmp1 + tmp2;
+         }]], [ a(1, 2); ] )],
+       [grub_cv_gcc_inline_asm_bmi2=yes])
+     fi])
+  if test "$grub_cv_gcc_inline_asm_bmi2" = "yes" ; then
+    CPPFLAGS_GCRY_ASM="$CPPFLAGS_GCRY_ASM -DHAVE_GCC_INLINE_ASM_BMI2"
+  fi
+fi
+
+AC_SUBST(CPPFLAGS_GCRY_ASM)
 
 CFLAGS="$TARGET_CFLAGS"
 
@@ -2068,6 +2327,29 @@ fi
 AC_SUBST([LIBZFS])
 AC_SUBST([LIBNVPAIR])
 
+AC_ARG_ENABLE([grub-protect],
+	      [AS_HELP_STRING([--enable-grub-protect],
+                             [build and install the `grub-protect' utility (default=guessed)])])
+if test x"$enable_grub_protect" = xno ; then
+  grub_protect_excuse="explicitly disabled"
+fi
+
+LIBTASN1=
+if test x"$grub_protect_excuse" = x ; then
+  AC_CHECK_LIB([tasn1], [asn1_write_value], [LIBTASN1="-ltasn1"], [grub_protect_excuse="need libtasn1 library"])
+fi
+AC_SUBST([LIBTASN1])
+
+if test x"$enable_grub_protect" = xyes && test x"$grub_protect_excuse" != x ; then
+  AC_MSG_ERROR([grub-protect was explicitly requested but can't be compiled ($grub_protect_excuse)])
+fi
+if test x"$grub_protect_excuse" = x ; then
+enable_grub_protect=yes
+else
+enable_grub_protect=no
+fi
+AC_SUBST([enable_grub_protect])
+
 LIBS=""
 
 AC_SUBST([FONT_SOURCE])
@@ -2184,6 +2466,7 @@ AM_CONDITIONAL([COND_GRUB_EMU_SDL], [test x$enable_grub_emu_sdl = xyes])
 AM_CONDITIONAL([COND_GRUB_EMU_PCI], [test x$enable_grub_emu_pci = xyes])
 AM_CONDITIONAL([COND_GRUB_MKFONT], [test x$enable_grub_mkfont = xyes])
 AM_CONDITIONAL([COND_GRUB_MOUNT], [test x$enable_grub_mount = xyes])
+AM_CONDITIONAL([COND_GRUB_PROTECT], [test x$enable_grub_protect = xyes])
 AM_CONDITIONAL([COND_HAVE_FONT_SOURCE], [test x$FONT_SOURCE != x])
 if test x$FONT_SOURCE != x ; then
    HAVE_FONT_SOURCE=1
@@ -2310,6 +2593,11 @@ if [ x"$grub_mount_excuse" = x ]; then
 echo grub-mount: Yes
 else
 echo grub-mount: No "($grub_mount_excuse)"
+fi
+if [ x"$grub_protect_excuse" = x ]; then
+echo grub-protect: Yes
+else
+echo grub-protect: No "($grub_protect_excuse)"
 fi
 if [ x"$starfield_excuse" = x ]; then
 echo starfield theme: Yes

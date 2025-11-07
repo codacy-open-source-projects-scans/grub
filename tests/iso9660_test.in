@@ -1,10 +1,10 @@
 #!@BUILD_SHEBANG@
 
-set -e
+set -ex
 
 if ! which xorriso >/dev/null 2>&1; then
    echo "xorriso not installed; cannot test iso9660."
-   exit 99
+   exit 77
 fi
 
 "@builddir@/grub-fs-tester" joliet

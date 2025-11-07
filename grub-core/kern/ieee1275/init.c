@@ -49,6 +49,16 @@
 #if defined(__powerpc__) || defined(__i386__)
 #include <grub/ieee1275/alloc.h>
 #endif
+#if defined(__powerpc__)
+#include <grub/lockdown.h>
+#include <grub/powerpc/ieee1275/ieee1275.h>
+#include <grub/powerpc/ieee1275/platform_keystore.h>
+#endif
+
+#ifdef __powerpc__
+#define GRUB_SB_DISABLED        ((grub_uint32_t) 0)
+#define GRUB_SB_ENFORCE         ((grub_uint32_t) 2)
+#endif
 
 /* The maximum heap size we're going to claim at boot. Not used by sparc. */
 #ifdef __i386__
@@ -152,6 +162,8 @@ grub_machine_get_bootlocation (char **device, char **path)
   char *bootpath;
   char *filename;
   char *type;
+  char *ret_device = NULL;
+  char *ret_path = NULL;
 
   bootpath = grub_ieee1275_get_boot_dev ();
   if (! bootpath)
@@ -167,7 +179,7 @@ grub_machine_get_bootlocation (char **device, char **path)
       dev = grub_ieee1275_get_aliasdevname (bootpath);
       canon = grub_ieee1275_canonicalise_devname (dev);
       if (! canon)
-        return;
+	goto done;
       ptr = canon + grub_strlen (canon) - 1;
       while (ptr > canon && (*ptr == ',' || *ptr == ':'))
 	ptr--;
@@ -175,13 +187,17 @@ grub_machine_get_bootlocation (char **device, char **path)
       *ptr = 0;
 
       if (grub_ieee1275_net_config)
-	grub_ieee1275_net_config (canon, device, path, bootpath);
+	grub_ieee1275_net_config (canon, &ret_device, &ret_path, bootpath);
       grub_free (dev);
       grub_free (canon);
+
+      /* Use path from net config if it is provided by cached DHCP info */
+      if (ret_path != NULL)
+	goto done;
+      /* Fall through to use firmware bootpath */
     }
   else
-    *device = grub_ieee1275_encode_devname (bootpath);
-  grub_free (type);
+    ret_device = grub_ieee1275_encode_devname (bootpath);
 
   filename = grub_ieee1275_get_filename (bootpath);
   if (filename)
@@ -194,10 +210,18 @@ grub_machine_get_bootlocation (char **device, char **path)
 	  *lastslash = '\0';
 	  grub_translate_ieee1275_path (filename);
 
-	  *path = filename;
+	  ret_path = filename;
 	}
     }
+
+ done:
+  grub_free (type);
   grub_free (bootpath);
+
+  if (device != NULL)
+    *device = ret_device;
+  if (path != NULL)
+    *path = ret_path;
 }
 
 /* Claim some available memory in the first /memory node. */
@@ -780,7 +804,7 @@ struct cas_vector
 
 /*
  * Call ibm,client-architecture-support to try to get more RMA.
- * We ask for 512MB which should be enough to verify a distro kernel.
+ * We ask for 768MB which should be enough to verify a distro kernel.
  * We ignore most errors: if we don't succeed we'll proceed with whatever
  * memory we have.
  */
@@ -852,7 +876,7 @@ grub_ieee1275_ibm_cas (void)
     .vec1 = 0x80, /* ignore */
     .vec2_size = 1 + sizeof (struct option_vector2) - 2,
     .vec2 = {
-      0, 0, -1, -1, -1, -1, -1, 512, -1, 0, 48
+      0, 0, -1, -1, -1, -1, -1, 768, -1, 0, 48
     },
     .vec3_size = 2 - 1,
     .vec3 = 0x00e0, /* ask for FP + VMX + DFP but don't halt if unsatisfied */
@@ -889,6 +913,10 @@ grub_claim_heap (void)
 {
   grub_err_t err;
   grub_uint32_t total = HEAP_MAX_SIZE;
+#if defined(__powerpc__)
+  grub_uint32_t ibm_ca_support_reboot = 0;
+  grub_ssize_t actual;
+#endif
 
   err = grub_ieee1275_total_mem (&rmo_top);
 
@@ -901,11 +929,49 @@ grub_claim_heap (void)
     grub_mm_add_region_fn = grub_ieee1275_mm_add_region;
 
 #if defined(__powerpc__)
+  /* Check if it's a CAS reboot with below property. If so, we will skip CAS call. */
+  if (grub_ieee1275_get_integer_property (grub_ieee1275_chosen,
+                                          "ibm,client-architecture-support-reboot",
+                                          &ibm_ca_support_reboot,
+                                          sizeof (ibm_ca_support_reboot),
+                                          &actual) >= 0)
+    grub_dprintf ("ieee1275", "ibm,client-architecture-support-reboot: %" PRIuGRUB_UINT32_T "\n",
+                  ibm_ca_support_reboot);
+
   if (grub_ieee1275_test_flag (GRUB_IEEE1275_FLAG_CAN_TRY_CAS_FOR_MORE_MEMORY))
     {
-      /* if we have an error, don't call CAS, just hope for the best */
-      if (err == GRUB_ERR_NONE && rmo_top < (512 * 1024 * 1024))
-	grub_ieee1275_ibm_cas ();
+      /*
+       * If we have an error don't call CAS. Just hope for the best.
+       * Along with the above, if the rmo_top is 512 MB or above. We
+       * will skip the CAS call. However, if we call CAS, the rmo_top
+       * will be set to 768 MB via CAS Vector2. But we need to call
+       * CAS with rmo_top < 512 MB to avoid the issue on the older
+       * Linux kernel, which still uses rmo_top as 512 MB. If we call
+       * CAS with a condition rmo_top < 768 MB, it will result in an
+       * issue due to the IBM CAS reboot feature and we won't be able
+       * to boot the newer kernel. Whenever a reboot is detected as
+       * the CAS reboot by GRUB it will boot the machine with the
+       * last booted kernel by reading the variable boot-last-label
+       * which has the info related to the last boot and it's specific
+       * to IBM PowerPC. Due to this, the machine will boot with the
+       * last booted kernel which has rmo_top as 512 MB. Also, if the
+       * reboot is detected as a CAS reboot, the GRUB will skip the CAS
+       * call. As the CAS has already been called earlier, so it is
+       * not required to call CAS even if the other conditions are met.
+       * This condition will also prevent a scenario where the machine
+       * get stuck in the CAS reboot loop while booting a machine with
+       * an older kernel, having option_vector2 MIN_RMA as 512 MB in
+       * Linux prom_init.c and GRUB uses rmo_top < 768 MB condition
+       * for calling CAS. Due to their respective conditions, Linux
+       * CAS and GRUB CAS will keep doing the CAS calls and change
+       * the MIN_RMA from 768, changed by GRUB, to 512, changed by Linux,
+       * to 768, changed by GRUB, to 512, changed by Linux, and so on.
+       * The machine will stuck in this CAS reboot loop forever.
+       *
+       * IBM PAPR: https://openpower.foundation/specifications/linuxonpower/
+       */
+      if (!ibm_ca_support_reboot && err == GRUB_ERR_NONE && rmo_top < (512 * 1024 * 1024))
+        grub_ieee1275_ibm_cas ();
     }
 #endif
 
@@ -952,7 +1018,51 @@ grub_parse_cmdline (void)
 	}
     }
 }
+#ifdef __powerpc__
+static void
+grub_ieee1275_get_secure_boot (void)
+{
+  grub_ieee1275_phandle_t root;
+  grub_uint32_t sb_mode = GRUB_SB_DISABLED;
+  grub_int32_t rc;
 
+  rc = grub_ieee1275_finddevice ("/", &root);
+  if (rc != 0)
+    {
+      grub_error (GRUB_ERR_UNKNOWN_DEVICE, "couldn't find / node");
+      return;
+    }
+
+  rc = grub_ieee1275_get_integer_property (root, "ibm,secure-boot", &sb_mode, sizeof (sb_mode), 0);
+  if (rc != 0)
+    {
+      grub_error (GRUB_ERR_UNKNOWN_DEVICE, "couldn't examine /ibm,secure-boot property");
+      return;
+    }
+  /*
+   * Secure Boot Mode:
+   * 0 - disabled
+   *      No signature verification is performed. This is the default.
+   * 1 - audit
+   *      Signature verification is performed and if signature verification
+   *      fails, display the errors and allow the boot to continue.
+   * 2 - enforce
+   *      Lockdown the GRUB. Signature verification is performed and If
+   *      signature verification fails, display the errors and stop the boot.
+   *
+   * Now, only support disabled and enforce.
+   */
+  if (sb_mode == GRUB_SB_ENFORCE)
+    {
+      grub_dprintf ("ieee1275", "Secure Boot Enabled\n");
+      grub_lockdown ();
+    }
+  else
+    grub_dprintf ("ieee1275", "Secure Boot Disabled\n");
+
+  grub_pks_keystore_init ();
+}
+#endif /* __powerpc__ */
 grub_addr_t grub_modbase;
 
 void
@@ -977,6 +1087,10 @@ grub_machine_init (void)
   grub_tsc_init ();
 #else
   grub_install_get_time_ms (grub_rtc_get_time_ms);
+#endif
+
+#ifdef __powerpc__
+  grub_ieee1275_get_secure_boot ();
 #endif
 }
 

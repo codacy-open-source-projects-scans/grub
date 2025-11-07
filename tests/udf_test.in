@@ -1,6 +1,6 @@
 #!@BUILD_SHEBANG@
 
-set -e
+set -ex
 
 if [ "x$EUID" = "x" ] ; then
   EUID=`id -u`
@@ -12,7 +12,7 @@ fi
 
 if ! which mkudffs >/dev/null 2>&1; then
    echo "mkudffs not installed; cannot test UDF."
-   exit 99
+   exit 77
 fi
 
 "@builddir@/grub-fs-tester" udf

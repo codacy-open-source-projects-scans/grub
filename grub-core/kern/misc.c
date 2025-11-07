@@ -26,6 +26,7 @@
 #include <grub/i18n.h>
 #include <grub/types.h>
 #include <grub/charset.h>
+#include <stddef.h>
 
 union printf_arg
 {
@@ -97,6 +98,37 @@ grub_memmove (void *dest, const void *src, grub_size_t n)
     }
 
   return dest;
+}
+
+static void *
+__memcpy_aligned (void *dest, const void *src, grub_size_t n)
+{
+  grub_addr_t *dw = (grub_addr_t *) dest;
+  const grub_addr_t *sw = (const grub_addr_t *) src;
+  grub_uint8_t *d;
+  const grub_uint8_t *s;
+
+  for (; n >= sizeof (grub_addr_t); n -= sizeof (grub_addr_t))
+    *dw++ = *sw++;
+
+  d = (grub_uint8_t *) dw;
+  s = (const grub_uint8_t *) sw;
+  for (; n > 0; n--)
+    *d++ = *s++;
+
+  return dest;
+}
+
+void *
+grub_memcpy (void *dest, const void *src, grub_size_t n)
+{
+  /* Check if dest and src are aligned and n >= sizeof(grub_addr_t). */
+  if (((grub_addr_t) dest & (sizeof (grub_addr_t) - 1)) == 0 &&
+      ((grub_addr_t) src & (sizeof (grub_addr_t) - 1)) == 0 &&
+      n >= sizeof (grub_addr_t))
+    return __memcpy_aligned (dest, src, n);
+
+  return grub_memmove (dest, src, n);
 }
 
 char *
@@ -231,14 +263,14 @@ grub_debug_enabled (const char * condition)
 }
 
 void
-grub_real_dprintf (const char *file, const int line, const char *condition,
+grub_real_dprintf (const char *file, const char *function, const int line, const char *condition,
 		   const char *fmt, ...)
 {
   va_list args;
 
   if (grub_debug_enabled (condition))
     {
-      grub_printf ("%s:%d:%s: ", file, line, condition);
+      grub_printf ("%s:%s:%d:%s: ", file, function, line, condition);
       va_start (args, fmt);
       grub_vprintf (fmt, args);
       va_end (args);
@@ -399,6 +431,68 @@ grub_strword (const char *haystack, const char *needle)
     }
 
   return 0;
+}
+
+char *
+grub_strtok_r (char *s, const char *delim, char **save_ptr)
+{
+  char *token;
+  const char *c;
+  bool is_delim;
+
+  if (s == NULL)
+    s = *save_ptr;
+
+  /* Scan leading delimiters. */
+  while (*s != '\0')
+    {
+      is_delim = false;
+      for (c = delim; *c != '\0'; c++)
+	{
+	  if (*s == *c)
+	    {
+	      is_delim = true;
+	      break;
+	    }
+	}
+      if (is_delim == true)
+	s++;
+      else
+	break;
+    }
+
+  if (*s == '\0')
+    {
+      *save_ptr = s;
+      return NULL;
+    }
+
+  /* Find the end of the token. */
+  token = s;
+  while (*s != '\0')
+    {
+      for (c = delim; *c != '\0'; c++)
+	{
+	  if (*s == *c)
+	    {
+	      *s = '\0';
+	      *save_ptr = s + 1;
+	      return token;
+	    }
+	}
+      s++;
+    }
+
+  *save_ptr = s;
+  return token;
+}
+
+char *
+grub_strtok (char *s, const char *delim)
+{
+  static char *last;
+
+  return grub_strtok_r (s, delim, &last);
 }
 
 int
@@ -739,6 +833,9 @@ parse_printf_arg_fmt (const char *fmt0, struct printf_args *args,
   COMPILE_TIME_ASSERT (sizeof (long) <= sizeof (long long));
   COMPILE_TIME_ASSERT (sizeof (long long) == sizeof (void *)
 		       || sizeof (int) == sizeof (void *));
+  COMPILE_TIME_ASSERT (sizeof (size_t) == sizeof (unsigned)
+		       || sizeof (size_t) == sizeof (unsigned long)
+		       || sizeof (size_t) == sizeof (unsigned long long));
 
   fmt = fmt0;
   while ((c = *fmt++) != 0)
@@ -773,11 +870,17 @@ parse_printf_arg_fmt (const char *fmt0, struct printf_args *args,
 	fmt++;
 
       c = *fmt++;
+      if (c == 'z')
+	{
+	  c = *fmt++;
+	  goto do_count;
+	}
       if (c == 'l')
 	c = *fmt++;
       if (c == 'l')
 	c = *fmt++;
 
+ do_count:
       switch (c)
 	{
 	case 'p':
@@ -830,7 +933,7 @@ parse_printf_arg_fmt (const char *fmt0, struct printf_args *args,
   while ((c = *fmt++) != 0)
     {
       int longfmt = 0;
-      grub_size_t curn;
+      unsigned long curn;
       const char *p;
 
       if (c != '%')
@@ -848,7 +951,10 @@ parse_printf_arg_fmt (const char *fmt0, struct printf_args *args,
 
       if (*fmt == '$')
 	{
-	  curn = grub_strtoull (p, 0, 10) - 1;
+	  curn = grub_strtoul (p, 0, 10);
+	  if (curn == 0)
+	    continue;
+	  curn--;
 	  fmt++;
 	}
 
@@ -871,6 +977,14 @@ parse_printf_arg_fmt (const char *fmt0, struct printf_args *args,
 	  continue;
 	}
 
+      if (c == 'z')
+	{
+	  c = *fmt++;
+	  if (sizeof (size_t) == sizeof (unsigned long))
+	    longfmt = 1;
+	  else if (sizeof (size_t) == sizeof (unsigned long long))
+	    longfmt = 2;
+	}
       if (c == 'l')
 	{
 	  c = *fmt++;
@@ -1034,6 +1148,8 @@ grub_vsnprintf_real (char *str, grub_size_t max_len, const char *fmt0,
 
       if (*fmt == '$')
 	{
+	  if (format1 == 0)
+	    continue;
 	  curn = format1 - 1;
 	  fmt++;
 	  format1 = 0;
@@ -1045,6 +1161,8 @@ grub_vsnprintf_real (char *str, grub_size_t max_len, const char *fmt0,
 	}
 
       c = *fmt++;
+      if (c == 'z')
+	c = *fmt++;
       if (c == 'l')
 	c = *fmt++;
       if (c == 'l')

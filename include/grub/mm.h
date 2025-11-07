@@ -23,7 +23,6 @@
 #include <grub/err.h>
 #include <grub/types.h>
 #include <grub/symbol.h>
-#include <grub/err.h>
 #include <config.h>
 
 #ifndef NULL
@@ -101,6 +100,7 @@ extern int EXPORT_VAR(grub_mm_debug);
 
 void EXPORT_FUNC(grub_mm_dump_free) (void);
 void EXPORT_FUNC(grub_mm_dump) (unsigned lineno);
+void EXPORT_FUNC(grub_mm_dump_regions) (void);
 
 #define grub_calloc(nmemb, size)	\
   grub_debug_calloc (GRUB_FILE, __LINE__, nmemb, size)

@@ -119,7 +119,7 @@ struct btrfs_ioctl_search_args {
                                struct btrfs_ioctl_fs_info_args)
 
 static int
-grub_util_is_imsm (const char *os_dev);
+grub_util_is_imsm_or_ddf (const char *os_dev);
 
 
 #define ESCAPED_PATH_MAX (4 * PATH_MAX)
@@ -131,6 +131,7 @@ struct mountinfo_entry
   char fstype[ESCAPED_PATH_MAX + 1], device[ESCAPED_PATH_MAX + 1];
 };
 
+#ifdef GRUB_UTIL
 static char **
 grub_util_raid_getmembers (const char *name, int bootable)
 {
@@ -191,6 +192,7 @@ grub_util_raid_getmembers (const char *name, int bootable)
 
   return devicelist;
 }
+#endif
 
 /* Statting something on a btrfs filesystem always returns a virtual device
    major/minor pair rather than the real underlying device, because btrfs
@@ -484,6 +486,9 @@ again:
 	}
     }
 
+  if (!entry_len)
+    goto out;
+
   /* Now scan visible mounts for the ones we're interested in.  */
   for (i = entry_len - 1; i >= 0; i--)
     {
@@ -576,6 +581,7 @@ out:
   return ret;
 }
 
+#ifdef GRUB_UTIL
 static char *
 get_mdadm_uuid (const char *os_dev)
 {
@@ -633,12 +639,13 @@ out:
 
   return name;
 }
+#endif
 
 static int
-grub_util_is_imsm (const char *os_dev)
+grub_util_is_imsm_or_ddf (const char *os_dev)
 {
   int retry;
-  int is_imsm = 0;
+  int is_imsm_or_ddf = 0;
   int container_seen = 0;
   const char *dev = os_dev;
 
@@ -699,8 +706,15 @@ grub_util_is_imsm (const char *os_dev)
 	  if (strncmp (buf, "MD_METADATA=imsm",
 		       sizeof ("MD_METADATA=imsm") - 1) == 0)
 	    {
-	      is_imsm = 1;
+	      is_imsm_or_ddf = 1;
 	      grub_util_info ("%s is imsm", dev);
+	      break;
+	    }
+	  if (strncmp (buf, "MD_METADATA=ddf",
+		       sizeof ("MD_METADATA=ddf") - 1) == 0)
+	    {
+	      is_imsm_or_ddf = 1;
+	      grub_util_info ("%s is ddf", dev);
 	      break;
 	    }
 	}
@@ -713,7 +727,7 @@ grub_util_is_imsm (const char *os_dev)
 
   if (dev != os_dev)
     free ((void *) dev);
-  return is_imsm;
+  return is_imsm_or_ddf;
 }
 
 char *
@@ -965,6 +979,7 @@ grub_util_part_to_disk (const char *os_dev, struct stat *st,
   return path;
 }
 
+#ifdef GRUB_UTIL
 static char *
 grub_util_get_raid_grub_dev (const char *os_dev)
 {
@@ -1067,6 +1082,7 @@ grub_util_get_raid_grub_dev (const char *os_dev)
   }
   return grub_dev;
 }
+#endif
 
 enum grub_dev_abstraction_types
 grub_util_get_dev_abstraction_os (const char *os_dev)
@@ -1078,11 +1094,12 @@ grub_util_get_dev_abstraction_os (const char *os_dev)
 
   /* Check for RAID.  */
   if (!strncmp (os_dev, "/dev/md", 7) && ! grub_util_device_is_mapped (os_dev)
-      && !grub_util_is_imsm (os_dev))
+      && !grub_util_is_imsm_or_ddf (os_dev))
     return GRUB_DEV_ABSTRACTION_RAID;
   return GRUB_DEV_ABSTRACTION_NONE;
 }
 
+#ifdef GRUB_UTIL
 int
 grub_util_pull_device_os (const char *os_dev,
 			  enum grub_dev_abstraction_types ab)
@@ -1139,6 +1156,7 @@ grub_util_get_grub_dev_os (const char *os_dev)
 
   return grub_dev;
 }
+#endif
 
 char *
 grub_make_system_path_relative_to_its_root_os (const char *path)

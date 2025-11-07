@@ -823,8 +823,13 @@ struct start_info {
                                 /* (PFN of pre-loaded module if           */
                                 /*  SIF_MOD_START_PFN set in flags).      */
     unsigned long mod_len;      /* Size (bytes) of pre-loaded module.     */
-#define MAX_GUEST_CMDLINE 1024
-    int8_t cmd_line[MAX_GUEST_CMDLINE];
+    /*
+     * cmd_line will contain a NUL-termianted string if it contains valid
+     * data, but it MAY be invalid and not contain a NUL byte at all. Code
+     * that accesses cmd_line MUST NOT assume it is NUL-terminated.
+     */
+#define GRUB_XEN_MAX_GUEST_CMDLINE 1024
+    int8_t cmd_line[GRUB_XEN_MAX_GUEST_CMDLINE];
     /* The pfn range here covers both page table and p->m table frames.   */
     unsigned long first_p2m_pfn;/* 1st pfn forming initial P->M table.    */
     unsigned long nr_p2m_frames;/* # of pfns forming initial P->M table.  */

@@ -463,14 +463,19 @@ handle_install_list (struct install_list *il, const char *val,
 
 static char **pubkeys;
 static size_t npubkeys;
+static char **x509keys;
+static size_t nx509keys;
 static char *sbat;
 static int disable_shim_lock;
 static grub_compression_t compression;
 static int disable_cli;
+static size_t appsig_size;
 
 int
 grub_install_parse (int key, char *arg)
 {
+  const char *end;
+
   switch (key)
     {
     case GRUB_INSTALL_OPTIONS_INSTALL_CORE_COMPRESS:
@@ -507,6 +512,10 @@ grub_install_parse (int key, char *arg)
       return 1;
     case GRUB_INSTALL_OPTIONS_DISABLE_CLI:
       disable_cli = 1;
+      return 1;
+    case 'x':
+      x509keys = xrealloc (x509keys, sizeof (x509keys[0]) * (nx509keys + 1));
+      x509keys[nx509keys++] = xstrdup (arg);
       return 1;
 
     case GRUB_INSTALL_OPTIONS_VERBOSITY:
@@ -571,6 +580,13 @@ grub_install_parse (int key, char *arg)
       grub_util_error (_("Unrecognized compression `%s'"), arg);
     case GRUB_INSTALL_OPTIONS_GRUB_MKIMAGE:
       return 1;
+    case GRUB_INSTALL_OPTIONS_APPENDED_SIGNATURE_SIZE:
+      appsig_size = grub_strtoul (arg, &end, 10);
+      if (*arg == '\0' || *end != '\0')
+        grub_util_error (_("non-numeric or invalid appended signature size `%s'"), arg);
+      else if (appsig_size == 0)
+        grub_util_error (_("appended signature size `%s', and it should not be zero"), arg);
+      return 1;
     default:
       return 0;
     }
@@ -632,6 +648,9 @@ grub_install_make_image_wrap_file (const char *dir, const char *prefix,
   for (pk = pubkeys; pk < pubkeys + npubkeys; pk++)
     slen += sizeof (" --pubkey ''") + grub_strlen (*pk);
 
+  for (pk = x509keys; pk < x509keys + nx509keys; pk++)
+    slen += sizeof (" --x509key ''") + grub_strlen (*pk);
+
   for (md = modules.entries; *md; md++)
     slen += sizeof (" ''") + grub_strlen (*md);
 
@@ -672,6 +691,14 @@ grub_install_make_image_wrap_file (const char *dir, const char *prefix,
       *p++ = '\'';
     }
 
+  for (pk = x509keys; pk < x509keys + nx509keys; pk++)
+    {
+      p = grub_stpcpy (p, "--x509key '");
+      p = grub_stpcpy (p, *pk);
+      *p++ = '\'';
+      *p++ = ' ';
+    }
+
   for (md = modules.entries; *md; md++)
     {
       *p++ = ' ';
@@ -683,9 +710,10 @@ grub_install_make_image_wrap_file (const char *dir, const char *prefix,
   *p = '\0';
 
   grub_util_info ("grub-mkimage --directory '%s' --prefix '%s' --output '%s'"
-		  " --format '%s' --compression '%s'%s%s%s%s\n",
+		  " --format '%s' --compression '%s'"
+		  " --appended-signature-size %zu %s %s %s %s\n",
 		  dir, prefix, outname,
-		  mkimage_target, compnames[compression],
+		  mkimage_target, compnames[compression], appsig_size,
 		  note ? " --note" : "",
 		  disable_shim_lock ? " --disable-shim-lock" : "",
 		  disable_cli ? " --disable-cli" : "", s);
@@ -697,8 +725,8 @@ grub_install_make_image_wrap_file (const char *dir, const char *prefix,
 
   grub_install_generate_image (dir, prefix, fp, outname,
 			       modules.entries, memdisk_path,
-			       pubkeys, npubkeys, config_path, tgt,
-			       note, compression, dtb, sbat,
+			       pubkeys, npubkeys,  x509keys, nx509keys, config_path, tgt,
+			       note, appsig_size, compression, dtb, sbat,
 			       disable_shim_lock, disable_cli);
   while (dc--)
     grub_install_pop_module ();

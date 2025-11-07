@@ -405,7 +405,7 @@ grub_hfsplus_mount (grub_disk_t disk)
 
  fail:
 
-  if (grub_errno == GRUB_ERR_OUT_OF_RANGE)
+  if (grub_errno == GRUB_ERR_OUT_OF_RANGE || grub_errno == GRUB_ERR_NONE)
     grub_error (GRUB_ERR_BAD_FS, "not a HFS+ filesystem");
 
   grub_free (data);
@@ -736,7 +736,9 @@ list_nodes (void *record, void *hook_arg)
 	int mode = (grub_be_to_cpu16 (fileinfo->mode)
 		    & GRUB_HFSPLUS_FILEMODE_MASK);
 
-	if (mode == GRUB_HFSPLUS_FILEMODE_REG)
+	if (mode == 0) /* Created by pre-Mac OS X. */
+          type = GRUB_FSHELP_REG;
+        else if (mode == GRUB_HFSPLUS_FILEMODE_REG)
 	  type = GRUB_FSHELP_REG;
 	else if (mode == GRUB_HFSPLUS_FILEMODE_SYMLINK)
 	  type = GRUB_FSHELP_SYMLINK;
@@ -1176,6 +1178,7 @@ static struct grub_fs grub_hfsplus_fs =
 
 GRUB_MOD_INIT(hfsplus)
 {
+  grub_hfsplus_fs.mod = mod;
   grub_fs_register (&grub_hfsplus_fs);
   my_mod = mod;
 }

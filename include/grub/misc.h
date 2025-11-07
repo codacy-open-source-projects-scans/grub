@@ -35,9 +35,10 @@
 #define ARRAY_SIZE(array) (sizeof (array) / sizeof (array[0]))
 #define COMPILE_TIME_ASSERT(cond) switch (0) { case 1: case !(cond): ; }
 
-#define grub_dprintf(condition, ...) grub_real_dprintf(GRUB_FILE, __LINE__, condition, __VA_ARGS__)
+#define grub_dprintf(condition, ...) grub_real_dprintf(GRUB_FILE, __FUNCTION__, __LINE__, condition, __VA_ARGS__)
 
 void *EXPORT_FUNC(grub_memmove) (void *dest, const void *src, grub_size_t n);
+void *EXPORT_FUNC(grub_memcpy) (void *dest, const void *src, grub_size_t n);
 char *EXPORT_FUNC(grub_strcpy) (char *dest, const char *src);
 
 static inline char *
@@ -64,11 +65,43 @@ grub_stpcpy (char *dest, const char *src)
   return d - 1;
 }
 
-/* XXX: If grub_memmove is too slow, we must implement grub_memcpy.  */
-static inline void *
-grub_memcpy (void *dest, const void *src, grub_size_t n)
+static inline grub_size_t
+grub_strlcpy (char *dest, const char *src, grub_size_t size)
 {
-  return grub_memmove (dest, src, n);
+  char *d = dest;
+  grub_size_t res = 0;
+  /*
+   * We do not subtract one from size here to avoid dealing with underflowing
+   * the value, which is why to_copy is always checked to be greater than one
+   * throughout this function.
+   */
+  grub_size_t to_copy = size;
+
+  /* Copy size - 1 bytes to dest. */
+  if (to_copy > 1)
+    while ((*d++ = *src++) != '\0' && ++res && --to_copy > 1)
+      ;
+
+  /*
+   * NUL terminate if size != 0. The previous step may have copied a NUL byte
+   * if it reached the end of the string, but we know dest[size - 1] must always
+   * be a NUL byte.
+   */
+  if (size != 0)
+    dest[size - 1] = '\0';
+
+  /* If there is still space in dest, but are here, we reached the end of src. */
+  if (to_copy > 1)
+    return res;
+
+  /*
+   * If we haven't reached the end of the string, iterate through to determine
+   * the strings total length.
+   */
+  while (*src++ != '\0' && ++res)
+   ;
+
+  return res;
 }
 
 #if defined(__x86_64__) && !defined (GRUB_UTIL)
@@ -86,6 +119,9 @@ int EXPORT_FUNC(grub_strncmp) (const char *s1, const char *s2, grub_size_t n);
 char *EXPORT_FUNC(grub_strchr) (const char *s, int c);
 char *EXPORT_FUNC(grub_strrchr) (const char *s, int c);
 int EXPORT_FUNC(grub_strword) (const char *s, const char *w);
+
+char *EXPORT_FUNC(grub_strtok_r) (char *s, const char *delim, char **save_ptr);
+char *EXPORT_FUNC(grub_strtok) (char *s, const char *delim);
 
 /* Copied from gnulib.
    Written by Bruno Haible <bruno@clisp.org>, 2005. */
@@ -371,9 +407,10 @@ grub_puts (const char *s)
 int EXPORT_FUNC(grub_puts_) (const char *s);
 int EXPORT_FUNC(grub_debug_enabled) (const char *condition);
 void EXPORT_FUNC(grub_real_dprintf) (const char *file,
+				     const char *function,
                                      const int line,
                                      const char *condition,
-                                     const char *fmt, ...) __attribute__ ((format (GNU_PRINTF, 4, 5)));
+                                     const char *fmt, ...) __attribute__ ((format (GNU_PRINTF, 5, 6)));
 int EXPORT_FUNC(grub_printf) (const char *fmt, ...) __attribute__ ((format (GNU_PRINTF, 1, 2)));
 int EXPORT_FUNC(grub_printf_) (const char *fmt, ...) __attribute__ ((format (GNU_PRINTF, 1, 2)));
 int EXPORT_FUNC(grub_vprintf) (const char *fmt, va_list args);
@@ -392,6 +429,8 @@ grub_uint64_t EXPORT_FUNC(grub_divmod64) (grub_uint64_t n,
 					  grub_uint64_t *r);
 
 extern bool EXPORT_FUNC(grub_is_cli_disabled) (void);
+extern bool EXPORT_FUNC(grub_is_cli_need_auth) (void);
+extern void EXPORT_FUNC(grub_cli_set_auth_needed) (void);
 
 /* Must match softdiv group in gentpl.py.  */
 #if !defined(GRUB_MACHINE_EMU) && (defined(__arm__) || defined(__ia64__) || \

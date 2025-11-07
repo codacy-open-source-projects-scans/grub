@@ -75,7 +75,8 @@ static struct argp_option options[] = {
    /* TRANSLATORS: "embed" is a verb (command description).  "*/
   {"config",   'c', N_("FILE"), 0, N_("embed FILE as an early config"), 0},
    /* TRANSLATORS: "embed" is a verb (command description).  "*/
-  {"pubkey",   'k', N_("FILE"), 0, N_("embed FILE as public key for signature checking"), 0},
+  {"pubkey",   'k', N_("FILE"), 0, N_("embed FILE as public key for PGP signature checking"), 0},
+  {"x509key",     'x', N_("FILE"), 0, N_("embed FILE as an x509 certificate for appended signature checking"), 0},
   /* TRANSLATORS: NOTE is a name of segment.  */
   {"note",   'n', 0, 0, N_("add NOTE segment for CHRP IEEE1275"), 0},
   {"output",  'o', N_("FILE"), 0, N_("output a generated image to FILE [default=stdout]"), 0},
@@ -84,6 +85,7 @@ static struct argp_option options[] = {
   {"sbat", 's', N_("FILE"), 0, N_("SBAT metadata"), 0},
   {"disable-shim-lock", GRUB_INSTALL_OPTIONS_DISABLE_SHIM_LOCK, 0, 0, N_("disable shim_lock verifier"), 0},
   {"disable-cli", GRUB_INSTALL_OPTIONS_DISABLE_CLI, 0, 0, N_("disable command line interface access"), 0},
+  {"appended-signature-size", 'S', N_("SIZE"), 0, N_("Add a note segment reserving SIZE bytes for an appended signature"), 0},
   {"verbose",     'v', 0,      0, N_("print verbose messages."), 0},
   { 0, 0, 0, 0, 0, 0 }
 };
@@ -124,12 +126,15 @@ struct arguments
   char *dtb;
   char **pubkeys;
   size_t npubkeys;
+  char **x509keys;
+  size_t nx509keys;
   char *font;
   char *config;
   char *sbat;
   int note;
   int disable_shim_lock;
   int disable_cli;
+  size_t appsig_size;
   const struct grub_install_image_target_desc *image_target;
   grub_compression_t comp;
 };
@@ -140,6 +145,7 @@ argp_parser (int key, char *arg, struct argp_state *state)
   /* Get the input argument from argp_parse, which we
      know is a pointer to our arguments structure. */
   struct arguments *arguments = state->input;
+  const char *end;
 
   switch (key)
     {
@@ -172,6 +178,14 @@ argp_parser (int key, char *arg, struct argp_state *state)
       arguments->note = 1;
       break;
 
+    case 'S':
+      arguments->appsig_size = grub_strtoul (arg, &end, 10);
+      if (*arg == '\0' || *end != '\0')
+        grub_util_error (_("non-numeric or invalid appended signature size `%s'"), arg);
+      else if (arguments->appsig_size == 0)
+        grub_util_error (_("appended signature size `%s', and it should not be zero"), arg);
+      break;
+
     case 'm':
       if (arguments->memdisk)
 	free (arguments->memdisk);
@@ -196,6 +210,12 @@ argp_parser (int key, char *arg, struct argp_state *state)
 				     sizeof (arguments->pubkeys[0])
 				     * (arguments->npubkeys + 1));
       arguments->pubkeys[arguments->npubkeys++] = xstrdup (arg);
+      break;
+
+    case 'x':
+      arguments->x509keys = xrealloc (arguments->x509keys,
+                                      sizeof (arguments->x509keys[0]) * (arguments->nx509keys + 1));
+      arguments->x509keys[arguments->nx509keys++] = xstrdup (arg);
       break;
 
     case 'c':
@@ -328,8 +348,10 @@ main (int argc, char *argv[])
   grub_install_generate_image (arguments.dir, arguments.prefix, fp,
 			       arguments.output, arguments.modules,
 			       arguments.memdisk, arguments.pubkeys,
-			       arguments.npubkeys, arguments.config,
+			       arguments.npubkeys, arguments.x509keys,
+			       arguments.nx509keys, arguments.config,
 			       arguments.image_target, arguments.note,
+			       arguments.appsig_size,
 			       arguments.comp, arguments.dtb,
 			       arguments.sbat, arguments.disable_shim_lock,
 			       arguments.disable_cli);

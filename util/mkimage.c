@@ -883,9 +883,9 @@ void
 grub_install_generate_image (const char *dir, const char *prefix,
 			     FILE *out, const char *outname, char *mods[],
 			     char *memdisk_path, char **pubkey_paths,
-			     size_t npubkeys, char *config_path,
+			     size_t npubkeys, char **x509key_paths, size_t nx509keys, char *config_path,
 			     const struct grub_install_image_target_desc *image_target,
-			     int note, grub_compression_t comp, const char *dtb_path,
+			     int note, size_t appsig_size, grub_compression_t comp, const char *dtb_path,
 			     const char *sbat_path, int disable_shim_lock,
 			     int disable_cli)
 {
@@ -929,6 +929,24 @@ grub_install_generate_image (const char *dir, const char *prefix,
       }
   }
 
+  if (nx509keys != 0 && image_target->id != IMAGE_PPC)
+    grub_util_error (_("x509 public key can be support only to appended signature"
+                       " with powerpc-ieee1275 images"));
+
+  {
+    size_t i;
+
+    for (i = 0; i < nx509keys; i++)
+      {
+        size_t curs;
+
+        curs = ALIGN_ADDR (grub_util_get_image_size (x509key_paths[i]));
+        grub_util_info ("the size of x509 public key %u is 0x%" GRUB_HOST_PRIxLONG_LONG,
+                        (unsigned) i, (unsigned long long) curs);
+        total_module_size += curs + sizeof (struct grub_module_header);
+      }
+  }
+
   if (memdisk_path)
     {
       memdisk_size = ALIGN_UP(grub_util_get_image_size (memdisk_path), 512);
@@ -943,8 +961,11 @@ grub_install_generate_image (const char *dir, const char *prefix,
       total_module_size += dtb_size + sizeof (struct grub_module_header);
     }
 
-  if (sbat_path != NULL && image_target->id != IMAGE_EFI)
-    grub_util_error (_(".sbat section can be embedded into EFI images only"));
+  if (sbat_path != NULL && (image_target->id != IMAGE_EFI && image_target->id != IMAGE_PPC))
+    grub_util_error (_("SBAT data can be added only to EFI or powerpc-ieee1275 images"));
+
+  if (appsig_size != 0 && image_target->id != IMAGE_PPC)
+    grub_util_error (_("appended signature can be support only to powerpc-ieee1275 images"));
 
   if (disable_shim_lock)
     total_module_size += sizeof (struct grub_module_header);
@@ -1053,12 +1074,31 @@ grub_install_generate_image (const char *dir, const char *prefix,
 	curs = grub_util_get_image_size (pubkey_paths[i]);
 
 	header = (struct grub_module_header *) (kernel_img + offset);
-	header->type = grub_host_to_target32 (OBJ_TYPE_PUBKEY);
+	header->type = grub_host_to_target32 (OBJ_TYPE_GPG_PUBKEY);
 	header->size = grub_host_to_target32 (curs + sizeof (*header));
 	offset += sizeof (*header);
 
 	grub_util_load_image (pubkey_paths[i], kernel_img + offset);
 	offset += ALIGN_ADDR (curs);
+      }
+  }
+
+  {
+    size_t i;
+
+    for (i = 0; i < nx509keys; i++)
+      {
+        size_t curs;
+        struct grub_module_header *header;
+
+        curs = grub_util_get_image_size (x509key_paths[i]);
+        header = (struct grub_module_header *) (kernel_img + offset);
+        header->type = grub_host_to_target32 (OBJ_TYPE_X509_PUBKEY);
+        header->size = grub_host_to_target32 (curs + sizeof (*header));
+
+        offset += sizeof (*header);
+        grub_util_load_image (x509key_paths[i], kernel_img + offset);
+        offset += ALIGN_ADDR (curs);
       }
   }
 
@@ -1814,6 +1854,14 @@ grub_install_generate_image (const char *dir, const char *prefix,
     case IMAGE_I386_IEEE1275:
       {
 	grub_uint64_t target_addr;
+	char *sbat = NULL;
+	if (sbat_path != NULL)
+	  {
+	    sbat_size = grub_util_get_image_size (sbat_path);
+	    sbat = xmalloc (sbat_size);
+	    grub_util_load_image (sbat_path, sbat);
+	    layout.sbat_size = sbat_size;
+	  }
 	if (image_target->id == IMAGE_LOONGSON_ELF)
 	  {
 	    if (comp == GRUB_COMPRESSION_NONE)
@@ -1825,10 +1873,10 @@ grub_install_generate_image (const char *dir, const char *prefix,
 	else
 	  target_addr = image_target->link_addr;
 	if (image_target->voidp_sizeof == 4)
-	  grub_mkimage_generate_elf32 (image_target, note, &core_img, &core_size,
+	  grub_mkimage_generate_elf32 (image_target, note, sbat, appsig_size, &core_img, &core_size,
 				       target_addr, &layout);
 	else
-	  grub_mkimage_generate_elf64 (image_target, note, &core_img, &core_size,
+	  grub_mkimage_generate_elf64 (image_target, note, sbat, appsig_size, &core_img, &core_size,
 				       target_addr, &layout);
       }
       break;

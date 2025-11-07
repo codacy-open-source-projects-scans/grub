@@ -387,8 +387,7 @@ static enum xz_ret hash_validate(struct xz_dec *s, struct xz_buf *b,
 		&& sizeof (s->hash_value) >= hash->mdlen)
 	{
 		hash->final(hash_context);
-		grub_memcpy (s->hash_value, hash->read(hash_context),
-			     hash->mdlen);
+		memcpy (s->hash_value, hash->read (hash_context), hash->mdlen);
 		s->have_hash_value = 1;
 		if (s->hash_id == 1 || crc32)
 		{
@@ -425,9 +424,9 @@ static enum xz_ret hash_validate(struct xz_dec *s, struct xz_buf *b,
 
 #ifndef GRUB_EMBED_DECOMPRESSOR
 	if (s->hash)
-		s->hash->init(s->hash_context);
+		s->hash->init(s->hash_context, 0);
 	if (s->crc32)
-		s->crc32->init(s->crc32_context);
+		s->crc32->init(s->crc32_context, 0);
 #endif
 	s->have_hash_value = 0;
 	s->pos = 0;
@@ -493,7 +492,7 @@ static enum xz_ret dec_stream_header(struct xz_dec *s)
 		s->crc32_context = kmalloc(s->crc32->contextsize, GFP_KERNEL);
 		if (s->crc32_context == NULL)
 			return XZ_MEMLIMIT_ERROR;
-		s->crc32->init(s->crc32_context);
+		s->crc32->init(s->crc32_context, 0);
 	}
 #endif
 
@@ -531,9 +530,9 @@ static enum xz_ret dec_stream_header(struct xz_dec *s)
 				return XZ_MEMLIMIT_ERROR;
 			}
 
-			s->hash->init(s->hash_context);
-			s->hash->init(s->index.hash.hash_context);
- 			s->hash->init(s->block.hash.hash_context);
+			s->hash->init(s->hash_context, 0);
+			s->hash->init(s->index.hash.hash_context, 0);
+ 			s->hash->init(s->block.hash.hash_context, 0);
 		}
 #endif
 	}
@@ -1014,9 +1013,9 @@ void xz_dec_reset(struct xz_dec *s)
 #ifndef GRUB_EMBED_DECOMPRESSOR
 	if (s->hash)
 	{
-		s->hash->init(s->hash_context);
-		s->hash->init(s->index.hash.hash_context);
-		s->hash->init(s->block.hash.hash_context);
+		s->hash->init(s->hash_context, 0);
+		s->hash->init(s->index.hash.hash_context, 0);
+		s->hash->init(s->block.hash.hash_context, 0);
 	}
 #endif
 	s->have_hash_value = 0;

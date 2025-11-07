@@ -74,7 +74,8 @@ exec_show_error () {
 work_directory=${WORKDIR:-`mktemp -d "${TMPDIR:-/tmp}/grub-shell.XXXXXXXXXX"`} || exit 1
 
 . "${builddir}/grub-core/modinfo.sh"
-qemuopts=
+qemuopts=${GRUB_QEMU_OPTS}
+emuopts=
 serial_port=com0
 serial_null=
 halt_cmd=halt
@@ -376,6 +377,9 @@ for option in "$@"; do
     --qemu-opts=*)
 	qs=`echo "$option" | sed -e 's/--qemu-opts=//'`
 	qemuopts="$qemuopts $qs" ;;
+    --emu-opts=*)
+	qs=`echo "$option" | sed -e 's/--emu-opts=//'`
+	emuopts="$emuopts $qs" ;;
     --disk=*)
 	dsk=`echo "$option" | sed -e 's/--disk=//'`
 	if [ ${grub_modinfo_platform} = emu ]; then
@@ -674,7 +678,7 @@ elif [ x$boot = xemu ]; then
     cat >"$work_directory/run.sh" <<EOF
 #! @BUILD_SHEBANG@
 SDIR=\$(realpath -e \${0%/*})
-exec "$(realpath -e "${builddir}")/grub-core/grub-emu" -m "\$SDIR/${device_map##*/}" --memdisk "\$SDIR/${roottar##*/}" -r memdisk -d "/boot/grub"
+exec "$(realpath -e "${builddir}")/grub-core/grub-emu" -m "\$SDIR/${device_map##*/}" --memdisk "\$SDIR/${roottar##*/}" -r memdisk -d "/boot/grub" ${emuopts}
 EOF
 else
     cat >"$work_directory/run.sh" <<EOF
@@ -707,10 +711,14 @@ elif [ x$boot = xemu ]; then
     test -n "$debug" || rm -rf "$rootdir"
     test -n "$debug" || rm -f "$roottar"
 fi
+if [ x$boot = xnet ]; then
+    test -n "$debug" || rm -rf "$work_directory/netdir"
+fi
 test -n "$debug" || rm -f "${isofile}"
 test -n "$debug" || rm -rf "${rom_directory}"
 test -n "$debug" || rm -f "${tmpfile}" "${cfgfile}" "${goutfile}"
 test -n "$debug" || rm -f "$work_directory/run.sh"
+test -n "$debug" || rmdir "$work_directory"
 
 exit $ret
 

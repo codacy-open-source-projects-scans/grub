@@ -23,6 +23,7 @@
 #include <grub/device.h>
 #include <grub/symbol.h>
 #include <grub/types.h>
+#include <grub/dl.h>
 
 #include <grub/list.h>
 /* For embedding types.  */
@@ -56,6 +57,9 @@ struct grub_fs
 
   /* My name.  */
   const char *name;
+
+  /* My module */
+  grub_dl_t mod;
 
   /* Call HOOK with each file under DIR.  */
   grub_err_t (*fs_dir) (grub_device_t device, const char *path,
@@ -127,5 +131,7 @@ grub_fs_unregister (grub_fs_t fs)
 #define FOR_FILESYSTEMS(var) FOR_LIST_ELEMENTS((var), (grub_fs_list))
 
 grub_fs_t EXPORT_FUNC(grub_fs_probe) (grub_device_t device);
+
+#define GRUB_ENV_BTRFS_OFFSET (256 * 1024)
 
 #endif /* ! GRUB_FS_HEADER */

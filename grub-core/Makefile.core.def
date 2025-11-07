@@ -248,6 +248,7 @@ kernel = {
   xen = term/xen/console.c;
   xen = disk/xen/xendisk.c;
   xen = commands/boot.c;
+  xen = kern/xen/cmdline.c;
 
   i386_xen_pvh = commands/boot.c;
   i386_xen_pvh = disk/xen/xendisk.c;
@@ -255,6 +256,7 @@ kernel = {
   i386_xen_pvh = kern/i386/xen/tsc.c;
   i386_xen_pvh = kern/i386/xen/pvh.c;
   i386_xen_pvh = kern/xen/init.c;
+  i386_xen_pvh = kern/xen/cmdline.c;
   i386_xen_pvh = term/xen/console.c;
 
   ia64_efi = kern/ia64/efi/startup.S;
@@ -331,6 +333,9 @@ kernel = {
   powerpc_ieee1275 = kern/powerpc/cache.S;
   powerpc_ieee1275 = kern/powerpc/dl.c;
   powerpc_ieee1275 = kern/powerpc/compiler-rt.S;
+  powerpc_ieee1275 = kern/lockdown.c;
+  powerpc_ieee1275 = kern/powerpc/ieee1275/ieee1275.c;
+  powerpc_ieee1275 = kern/powerpc/ieee1275/platform_keystore.c;
 
   sparc64_ieee1275 = kern/sparc64/cache.S;
   sparc64_ieee1275 = kern/sparc64/dl.c;
@@ -367,6 +372,9 @@ kernel = {
   emu = kern/emu/cache_s.S;
   emu = kern/emu/hostdisk.c;
   emu = osdep/unix/hostdisk.c;
+  emu = osdep/relpath.c;
+  emu = osdep/getroot.c;
+  emu = osdep/unix/getroot.c;
   emu = osdep/exec.c;
   extra_dist = osdep/unix/exec.c;
   emu = osdep/devmapper/hostdisk.c;
@@ -846,6 +854,18 @@ module = {
 };
 
 module = {
+  name = blsuki;
+  common = commands/blsuki.c;
+  common = lib/gnulib/filevercmp.c;
+  enable = powerpc_ieee1275;
+  enable = efi;
+  enable = i386_pc;
+  enable = emu;
+  cflags = '$(CFLAGS_POSIX) $(CFLAGS_GNULIB)';
+  cppflags = '$(CPPFLAGS_POSIX) $(CPPFLAGS_GNULIB)';
+};
+
+module = {
   name = boot;
   common = commands/boot.c;
   i386_pc = lib/i386/pc/biosnum.c;
@@ -975,8 +995,23 @@ module = {
 module = {
   name = pgp;
   common = commands/pgp.c;
-  cflags = '$(CFLAGS_POSIX)';
-  cppflags = '-I$(srcdir)/lib/posix_wrap';
+  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
+  cppflags = '$(CPPFLAGS_GCRY)';
+};
+
+module = {
+  name = appendedsig;
+  common = commands/appendedsig/appendedsig.c;
+  common = commands/appendedsig/x509.c;
+  common = commands/appendedsig/pkcs7.c;
+  common = commands/appendedsig/asn1util.c;
+  common = commands/appendedsig/gnutls_asn1_tab.c;
+  common = commands/appendedsig/pkix_asn1_tab.c;
+  enable = emu;
+  enable = powerpc_ieee1275;
+  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
+  cppflags = '$(CPPFLAGS_GCRY) -I$(srcdir)/lib/libtasn1-grub';
+  depends = crypto, gcry_rsa, gcry_sha256, gcry_sha512, mpi, asn1;
 };
 
 module = {
@@ -1280,6 +1315,11 @@ module = {
 module = {
   name = raid6rec;
   common = disk/raid6_recover.c;
+};
+
+module = {
+  name = key_protector;
+  common = disk/key_protector.c;
 };
 
 module = {
@@ -1680,6 +1720,8 @@ module = {
 module = {
   name = crypto;
   common = lib/crypto.c;
+  common = lib/hwfeatures-gcry.c;
+  x86_64_efi = lib/x86_64/efi/hwfeatures-gcry.c;
 
   extra_dist = lib/libgcrypt-grub/cipher/crypto.lst;
 };
@@ -1687,6 +1729,11 @@ module = {
 module = {
   name = pbkdf2;
   common = lib/pbkdf2.c;
+};
+
+module = {
+  name = argon2;
+  common = lib/argon2.c;
 };
 
 module = {
@@ -2176,6 +2223,30 @@ module = {
 };
 
 module = {
+  name = dsa_sexp_test;
+  common = tests/dsa_sexp_test.c;
+
+  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
+  cppflags = '$(CPPFLAGS_GCRY)';
+};
+
+module = {
+  name = rsa_sexp_test;
+  common = tests/rsa_sexp_test.c;
+
+  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
+  cppflags = '$(CPPFLAGS_GCRY)';
+};
+
+module = {
+  name = appended_signature_test;
+  common = tests/appended_signature_test.c;
+  common = tests/appended_signatures.h;
+  enable = emu;
+  enable = powerpc_ieee1275;
+};
+
+module = {
   name = signature_test;
   common = tests/signature_test.c;
   common = tests/signatures.h;
@@ -2194,6 +2265,11 @@ module = {
 module = {
   name = pbkdf2_test;
   common = tests/pbkdf2_test.c;
+};
+
+module = {
+  name = argon2_test;
+  common = tests/argon2_test.c;
 };
 
 module = {
@@ -2248,6 +2324,10 @@ module = {
   common = tests/videotest_checksum.c;
 };
 
+/*
+ * These tests fail depending on the version of unifont. As we don't distribute
+ * our own unifont it fails for most users. Disable them so that they don't mask
+ * real failures. They can be reinstated once we solve unifont problem.
 module = {
   name = gfxterm_menu;
   common = tests/gfxterm_menu.c;
@@ -2257,6 +2337,7 @@ module = {
   name = cmdline_cat_test;
   common = tests/cmdline_cat_test.c;
 };
+ */
 
 module = {
   name = bitmap;
@@ -2444,6 +2525,13 @@ module = {
 };
 
 module = {
+  name = zstdio;
+  common = io/zstdio.c;
+  cppflags = '-I$(srcdir)/lib/posix_wrap -I$(srcdir)/lib/zstd';
+  cflags='-Wno-unreachable-code';
+};
+
+module = {
   name = testload;
   common = commands/testload.c;
 };
@@ -2529,9 +2617,25 @@ module = {
   common = lib/libgcrypt-grub/mpi/mpicoder.c;
   common = lib/libgcrypt-grub/mpi/mpih-rshift.c;
   common = lib/libgcrypt-grub/mpi/mpi-inline.c;
+  common = lib/libgcrypt-grub/mpi/mpih-const-time.c;
+  common = lib/libgcrypt-grub/mpi/mpi-scan.c;
+  common = lib/libgcrypt-grub/src/const-time.c;
   common = lib/libgcrypt_wrap/mem.c;
+  common = lib/libgcrypt-grub/cipher/md.c;
 
-  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-sign-compare';
+  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls -Wno-unused-but-set-variable';
+  cppflags = '$(CPPFLAGS_GCRY)';
+};
+
+module = {
+  name = pubkey;
+  common = lib/libgcrypt-grub/cipher/pubkey-util.c;
+  common = lib/libgcrypt-grub/cipher/rsa-common.c;
+  common = lib/libgcrypt-grub/cipher/dsa-common.c;
+  common = lib/libgcrypt-grub/src/sexp.c;
+  common = lib/b64dec.c;
+
+  cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
   cppflags = '$(CPPFLAGS_GCRY)';
 };
 
@@ -2560,6 +2664,34 @@ module = {
   common = commands/tpm.c;
   efi = commands/efi/tpm.c;
   enable = efi;
+};
+
+module = {
+  name = tss2;
+  common = lib/tss2/buffer.c;
+  common = lib/tss2/tss2_mu.c;
+  common = lib/tss2/tpm2_cmd.c;
+  common = lib/tss2/tss2.c;
+  efi = lib/efi/tcg2.c;
+  emu = lib/tss2/tcg2_emu.c;
+  powerpc_ieee1275 = lib/ieee1275/tcg2.c;
+  enable = efi;
+  enable = emu;
+  enable = powerpc_ieee1275;
+  cppflags = '-I$(srcdir)/lib/tss2';
+};
+
+module = {
+  name = tpm2_key_protector;
+  common = commands/tpm2_key_protector/args.c;
+  common = commands/tpm2_key_protector/module.c;
+  common = commands/tpm2_key_protector/tpm2key.c;
+  common = commands/tpm2_key_protector/tpm2key_asn1_tab.c;
+  /* The plaform support of tpm2_key_protector depends on the tcg2 implementation in tss2. */
+  enable = efi;
+  enable = emu;
+  enable = powerpc_ieee1275;
+  cppflags = '-I$(srcdir)/lib/tss2 -I$(srcdir)/lib/libtasn1-grub';
 };
 
 module = {
@@ -2605,4 +2737,34 @@ module = {
   efi = commands/bli.c;
   enable = efi;
   depends = part_gpt;
+};
+
+module = {
+  name = asn1;
+  common = lib/libtasn1-grub/lib/decoding.c;
+  common = lib/libtasn1-grub/lib/coding.c;
+  common = lib/libtasn1-grub/lib/element.c;
+  common = lib/libtasn1-grub/lib/structure.c;
+  common = lib/libtasn1-grub/lib/parser_aux.c;
+  common = lib/libtasn1-grub/lib/gstr.c;
+  common = lib/libtasn1-grub/lib/errors.c;
+  common = lib/libtasn1_wrap/wrap.c;
+  cflags = '$(CFLAGS_POSIX) $(CFLAGS_GNULIB)';
+  /* -Wno-type-limits comes from configure.ac of libtasn1 */
+  cppflags = '$(CPPFLAGS_POSIX) $(CPPFLAGS_GNULIB) -I$(srcdir)/lib/libtasn1-grub -I$(srcdir)/lib/libtasn1-grub/lib -Wno-type-limits';
+};
+
+module = {
+  name = asn1_test;
+  common = tests/asn1/tests/CVE-2018-1000654.c;
+  common = tests/asn1/tests/object-id-decoding.c;
+  common = tests/asn1/tests/object-id-encoding.c;
+  common = tests/asn1/tests/octet-string.c;
+  common = tests/asn1/tests/reproducers.c;
+  common = tests/asn1/tests/Test_overflow.c;
+  common = tests/asn1/tests/Test_simple.c;
+  common = tests/asn1/tests/Test_strings.c;
+  common = tests/asn1/asn1_test.c;
+  cflags = '-Wno-uninitialized';
+  cppflags = '-I$(srcdir)/lib/libtasn1-grub -I$(srcdir)/tests/asn1/';
 };

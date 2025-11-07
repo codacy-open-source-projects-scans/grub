@@ -80,6 +80,8 @@ enum grub_file_type
     GRUB_FILE_TYPE_PUBLIC_KEY,
     /* File holding public key to add to trused keys.  */
     GRUB_FILE_TYPE_PUBLIC_KEY_TRUST,
+    /* File holding x509 certificiate to add to trusted keys.  */
+    GRUB_FILE_TYPE_CERTIFICATE_TRUST,
     /* File of which we intend to print a blocklist to the user.  */
     GRUB_FILE_TYPE_PRINT_BLOCKLIST,
     /* File we intend to use for test loading or testing speed.  */
@@ -113,6 +115,8 @@ enum grub_file_type
     GRUB_FILE_TYPE_HASHLIST,
     /* File hashed by hashsum.  */
     GRUB_FILE_TYPE_TO_HASH,
+    /* File holding certificiate/binary hash to add to db/dbx. */
+    GRUB_FILE_TYPE_HASH_TRUST,
     /* Keyboard layout.  */
     GRUB_FILE_TYPE_KEYBOARD_LAYOUT,
     /* Picture file.  */
@@ -186,9 +190,10 @@ typedef enum grub_file_filter_id
     GRUB_FILE_FILTER_GZIO,
     GRUB_FILE_FILTER_XZIO,
     GRUB_FILE_FILTER_LZOPIO,
+    GRUB_FILE_FILTER_ZSTDIO,
     GRUB_FILE_FILTER_MAX,
     GRUB_FILE_FILTER_COMPRESSION_FIRST = GRUB_FILE_FILTER_GZIO,
-    GRUB_FILE_FILTER_COMPRESSION_LAST = GRUB_FILE_FILTER_LZOPIO,
+    GRUB_FILE_FILTER_COMPRESSION_LAST = GRUB_FILE_FILTER_ZSTDIO,
   } grub_file_filter_id_t;
 
 typedef grub_file_t (*grub_file_filter_t) (grub_file_t in, enum grub_file_type type);

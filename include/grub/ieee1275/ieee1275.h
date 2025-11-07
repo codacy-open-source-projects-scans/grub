@@ -24,6 +24,9 @@
 #include <grub/types.h>
 #include <grub/machine/ieee1275.h>
 
+#define IEEE1275_CELL_INVALID          ((grub_ieee1275_cell_t) -1)
+#define IEEE1275_CELL_NOT_FOUND        ((grub_int32_t) -7)
+
 #define GRUB_IEEE1275_CELL_FALSE       ((grub_ieee1275_cell_t) 0)
 #define GRUB_IEEE1275_CELL_TRUE        ((grub_ieee1275_cell_t) -1)
 
@@ -60,6 +63,7 @@ struct grub_ieee1275_common_hdr
 typedef grub_uint32_t grub_ieee1275_ihandle_t;
 typedef grub_uint32_t grub_ieee1275_phandle_t;
 
+#define GRUB_IEEE1275_IHANDLE_INVALID  ((grub_ieee1275_ihandle_t) 0)
 #define GRUB_IEEE1275_PHANDLE_INVALID  ((grub_ieee1275_phandle_t) -1)
 
 struct grub_ieee1275_devalias
