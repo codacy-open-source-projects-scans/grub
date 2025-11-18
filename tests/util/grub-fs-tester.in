@@ -386,9 +386,12 @@ for LOGSECSIZE in $(range "$MINLOGSECSIZE" "$MAXLOGSECSIZE" 1); do
 		    FSLABEL="g;/_é䏌䐓䏕䎛䎾䏴кит u"
 		    #FSLABEL="g;/_é莭莽😁кит u"
 		    ;;
-		# FS LIMITATION: reiserfs, extN, jfs and erofs label is at most 16 UTF-8 characters
-		x"reiserfs_old" | x"reiserfs" | x"ext"* | x"lvm"* | x"luks"* | x"mdraid"* | x"jfs" | x"jfs_caseins" | x"erofs_"*)
+		# FS LIMITATION: reiserfs, extN, and jfs label is at most 16 UTF-8 characters
+		x"reiserfs_old" | x"reiserfs" | x"ext"* | x"lvm"* | x"luks"* | x"mdraid"* | x"jfs" | x"jfs_caseins")
 		    FSLABEL="g;/éт 莭😁";;
+		# FS LIMITATION: erofs label is at most 15 UTF-8 characters
+		x"erofs_"*)
+		    FSLABEL="g;/é 莭😁";;
 		# FS LIMITATION: No underscore, space, semicolon, slash or international characters in UFS* in label. Limited to 32 UTF-8 characters
 		x"ufs1" | x"ufs1_sun" | x"ufs2")
 		    FSLABEL="grubtest""ieurrucnenreeiurueurewf";;
@@ -587,6 +590,10 @@ for LOGSECSIZE in $(range "$MINLOGSECSIZE" "$MAXLOGSECSIZE" 1); do
 		# FS LIMITATION: romfs has no timestamps.
 		x"romfs")
 		    NOFILETIME=y; NOFSTIME=y;;
+		# FS LIMITATION: Compact inodes do not allow for modification
+		#   times that are different from FS creation times.
+		x"erofs_compact")
+		    NOFILETIME=y;;
 	    esac
 
 	    NOFSLABEL=n
@@ -596,11 +603,12 @@ for LOGSECSIZE in $(range "$MINLOGSECSIZE" "$MAXLOGSECSIZE" 1); do
 		    | x"minix3" | xreiserfs_old)
 		    NOFSLABEL=y;;
 		x"erofs_"*)
-		    MKFS_EROFS_VERSION=$(mkfs.erofs -V 2>/dev/null | tr ' ' '\n' | grep '^[0-9]')
+		    MKFS_EROFS_VERSION=$(mkfs.erofs 2>/dev/null | head -n 1 | (read _ V; echo $V))
 		    # check if the version is at least 1.6
-		    if [ $(sort -V <(echo "$MKFS_EROFS_VERSION") <(echo "1.6") | head -n 1) != "1.6" ]; then
+		    if [ "$(echo -e "${MKFS_EROFS_VERSION}\n1.6" | sort -V | head -n 1)" != "1.6" ]; then
 			NOFSLABEL=y
-		    fi
+			unset FSLABEL
+		    fi;;
 	    esac
 
 	    PDIRCOMPNUM=210
@@ -877,7 +885,11 @@ for LOGSECSIZE in $(range "$MINLOGSECSIZE" "$MAXLOGSECSIZE" 1); do
 		xnilfs2)
 		    "mkfs.nilfs2" -L "$FSLABEL" -b $BLKSIZE  -q "${MOUNTDEVICE}" ;;
 		xext2_old)
-		    MKE2FS_DEVICE_SECTSIZE=$SECSIZE "mkfs.ext2" -r 0 -b $BLKSIZE -L "$FSLABEL" -q "${MOUNTDEVICE}"
+                    if "mkfs.ext2" -r 0 2>&1 | grep -q -F "the -r option has been removed"; then
+                        MKE2FS_DEVICE_SECTSIZE=$SECSIZE "mkfs.ext2" -E revision=0 -b $BLKSIZE -L "$FSLABEL" -q "${MOUNTDEVICE}"
+                    else
+                        MKE2FS_DEVICE_SECTSIZE=$SECSIZE "mkfs.ext2" -r 0 -b $BLKSIZE -L "$FSLABEL" -q "${MOUNTDEVICE}"
+                    fi
 		    MOUNTFS=ext2
 		    ;;
 		xext4_metabg)
@@ -1490,6 +1502,12 @@ for LOGSECSIZE in $(range "$MINLOGSECSIZE" "$MAXLOGSECSIZE" 1); do
 			# With some abstractions like mdraid flushing to disk
 			# may be delayed for a long time.
 			FSTIME="$UMOUNT_TIME";;
+		    x"erofs_"*)
+			# Creating the erofs image may take more than a few
+			# seconds. Use the more accurate timestamp from the
+			# superblock.
+			FSTIME="$(dump.erofs -s "${FSIMAGEP}0.img" | grep ^"Filesystem created:" | (read _ _ REST; echo $REST) )"
+			FSTIME="$(date -d "$FSTIME" -u '+%Y-%m-%d %H:%M:%S')";;
 		    xsquash*)
 			# Creating the squash image may take more than a few
 			# seconds. Use the more accurate timestamp from the
