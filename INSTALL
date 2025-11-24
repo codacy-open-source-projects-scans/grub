@@ -25,6 +25,7 @@ configuring the GRUB.
 * Flex 2.5.35 or later
 * pkg-config
 * GNU patch
+* wget (for downloading updated translations)
 * Other standard GNU/Unix tools
 * a libc with large file support (e.g. glibc 2.1 or later)
 
@@ -66,7 +67,7 @@ More cross compiling toolchains can be found at the following trusted sites:
 * https://mirrors.kernel.org/pub/tools/crosstool/
 * https://toolchains.bootlin.com/
 
-Prerequisites for make-check:
+Prerequisites for running make-check successfully:
 
 * qemu, specifically the binary "qemu-system-ARCH" where ARCH is the
   architecture GRUB has been built for; the "qemu-system" package on Debian
@@ -86,6 +87,8 @@ Prerequisites for make-check:
     reiserfs, udf, xfs
   - On newer kernels, the exfat kernel modules may be used instead of the
     exfat FUSE filesystem
+  - Kernel version 6.12.x was the last series to include reiserfs support,
+    so later kernels will fail the reiser filesystem test.
 * The following are Debian named packages required mostly for the full
   suite of filesystem testing (but some are needed by other tests as well):
   - btrfs-progs, dosfstools, e2fsprogs, erofs-utils, exfatprogs, exfat-fuse,
@@ -96,8 +99,8 @@ Prerequisites for make-check:
   - attr, cpio, g++, gawk, parted, recode, tar, util-linux
 
 Note that `make check' will run and many tests may complete successfully
-with only a subset of these prerequisites. However, some tests may be
-skipped or fail due to missing prerequisites.
+with only a subset of these prerequisites. However, some tests may fail
+due to missing prerequisites.
 
 To build the documentation you'll need:
 * texinfo, for the info and html documentation
@@ -140,15 +143,12 @@ The simplest way to compile this package is:
 
   1. `cd' to the directory containing the package's source code.
 
-  2. Skip this and following step if you use release tarball and proceed to
-     step 4. If you want translations type `./linguas.sh'.
-  
-  3. Type `./bootstrap'.
+  2. Type `./bootstrap'.
 
-     The autogen.sh (called by bootstrap) uses python. By default autodetect
-     it, but it can be overridden by setting the PYTHON variable.
+     The autogen.sh (called by bootstrap) uses python. By default it is
+     autodetected, but it can be overridden by setting the PYTHON variable.
 
-  4. Type `./configure' to configure the package for your system.
+  3. Type `./configure' to configure the package for your system.
      If you're using `csh' on an old version of System V, you might
      need to type `sh ./configure' instead to prevent `csh' from trying
      to execute `configure' itself.
@@ -156,19 +156,19 @@ The simplest way to compile this package is:
      Running `configure' takes awhile.  While running, it prints some
      messages telling which features it is checking for.
 
-  6. Type `make' to compile the package.
+  4. Type `make' to compile the package.
 
-  7. Optionally, type `make check' to run any self-tests that come with
-     the package. Note that many of the tests require root privileges in
-     order to run.
+  5. Optionally, type `make check' to run any self-tests that come with
+     the package. Note that many of the tests require root privileges and
+     a specially crafted environment in order to run.
 
-  8. Type `make install' to install the programs and any data files and
+  6. Type `make install' to install the programs and any data files and
      documentation.
 
-  9. Type `make html' or `make pdf' to generate the html or pdf
+  7. Type `make html' or `make pdf' to generate the html or pdf
      documentation.  Note, these are not built by default.
 
- 10. You can remove the program binaries and object files from the
+  8. You can remove the program binaries and object files from the
      source code directory by typing `make clean'.  To also remove the
      files that `configure' created (so you can compile the package for
      a different kind of computer), type `make distclean'.  There is
