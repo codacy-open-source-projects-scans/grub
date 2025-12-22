@@ -88,7 +88,7 @@ static const struct grub_arg_option uki_opt[] =
     {"enable-fallback", 'f', 0, "Fallback to the default BLS path if --path fails to find UKI entries.", 0, ARG_TYPE_NONE},
     {"show-default", 'd', 0, N_("Allow the default UKI entry to be added to the GRUB menu."), 0, ARG_TYPE_NONE},
     {"show-non-default", 'n', 0, N_("Allow the non-default UKI entries to be added to the GRUB menu."), 0, ARG_TYPE_NONE},
-    {"entry", 'e', 0, N_("Allow specificUKII entries to be added to the GRUB menu."), N_("FILE"), ARG_TYPE_FILE},
+    {"entry", 'e', 0, N_("Allow specific UKI entries to be added to the GRUB menu."), N_("FILE"), ARG_TYPE_FILE},
     {0, 0, 0, 0, 0, 0}
   };
 #endif
@@ -1210,7 +1210,7 @@ blsuki_find_entry (struct find_entry_info *info, bool enable_fallback, enum blsu
 
       /*
        * If we aren't able to find BLS entries in the directory given by info->dirname,
-       * we can fallback to the default location "/boot/loader/entries/" and see if we
+       * we can fallback to the default location of "/loader/entries/" and see if we
        * can find the files there. If we can't find UKI entries, fallback to
        * "/EFI/Linux" on the EFI system partition.
        */
@@ -1231,7 +1231,7 @@ blsuki_find_entry (struct find_entry_info *info, bool enable_fallback, enum blsu
 	  tmp = blsuki_update_boot_device (default_dir);
 	  tmp = grub_stpcpy (tmp, cmd_dir);
 
-	  blsuki_set_find_entry_info (info, default_dir, NULL, cmd_type);
+	  blsuki_set_find_entry_info (info, default_dir, info->devid, cmd_type);
 	  grub_dprintf ("blsuki", "Entries weren't found in %s, fallback to %s\n",
 			read_entry_info.dirname, info->dirname);
 	  fallback = true;
@@ -1458,9 +1458,11 @@ blsuki_cmd (grub_extcmd_context_t ctxt, enum blsuki_cmd_type cmd_type)
 }
 
 static grub_err_t
-grub_cmd_blscfg (grub_extcmd_context_t ctxt, int argc __attribute__ ((unused)),
+grub_cmd_blscfg (grub_extcmd_context_t ctxt, int argc,
 		 char **args __attribute__ ((unused)))
 {
+  if (argc != 0)
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("unexpected argument(s) found, see --help"));
   return blsuki_cmd (ctxt, BLSUKI_BLS_CMD);
 }
 
@@ -1468,9 +1470,11 @@ static grub_extcmd_t bls_cmd;
 
 #ifdef GRUB_MACHINE_EFI
 static grub_err_t
-grub_cmd_uki (grub_extcmd_context_t ctxt, int argc __attribute__ ((unused)),
+grub_cmd_uki (grub_extcmd_context_t ctxt, int argc,
 		 char **args __attribute__ ((unused)))
 {
+  if (argc != 0)
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("unexpected argument(s) found, see --help"));
   return blsuki_cmd (ctxt, BLSUKI_UKI_CMD);
 }
 
@@ -1480,7 +1484,7 @@ static grub_extcmd_t uki_cmd;
 GRUB_MOD_INIT(blsuki)
 {
   bls_cmd = grub_register_extcmd ("blscfg", grub_cmd_blscfg, 0,
-				  N_("[-p|--path] [-f|--enable-fallback] DIR [-d|--show-default] [-n|--show-non-default] [-e|--entry] FILE"),
+				  N_("[-p|--path] DIR [-f|--enable-fallback] [-d|--show-default] [-n|--show-non-default] [-e|--entry] FILE"),
 				  N_("Import Boot Loader Specification snippets."),
 				  bls_opt);
 #ifdef GRUB_MACHINE_EFI
