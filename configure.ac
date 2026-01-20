@@ -34,7 +34,7 @@ dnl "TARGET_" (such as TARGET_CC, TARGET_CFLAGS, etc.) are used for
 dnl the target type. See INSTALL for full list of variables and
 dnl description of the relationships between them.
 
-AC_INIT([GRUB],[2.14~rc1],[bug-grub@gnu.org])
+AC_INIT([GRUB],[2.15],[bug-grub@gnu.org])
 
 AS_CASE(["$ERROR_PLATFORM_NOT_SUPPORT_SSP"],
   [n | no | nO | N | No | NO], [ERROR_PLATFORM_NOT_SUPPORT_SSP=no],
@@ -1792,6 +1792,11 @@ LIBS=""
 # Defined in acinclude.m4.
 grub_ASM_USCORE
 grub_PROG_TARGET_CC
+
+# The error message produced by autoconf if autoconf-archive is not installed is
+# quite misleading and not very helpful. So, try point people in the right direction.
+m4_ifndef([AX_CHECK_LINK_FLAG], [m4_fatal([autoconf-archive is missing. You must install it to generate the configure script.])])
+
 if test "x$TARGET_APPLE_LINKER" != x1 ; then
 AX_CHECK_LINK_FLAG([-Wl,--image-base,0x400000],
     [TARGET_IMG_BASE_LDOPT="-Wl,--image-base"],
