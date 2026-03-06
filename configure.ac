@@ -1454,13 +1454,16 @@ if test x$grub_cv_target_cc_link_format = x-arch,i386 || test x$grub_cv_target_c
    TARGET_IMG_LDFLAGS='-nostdlib -static -Wl,-preload -Wl,-segalign,20'
    TARGET_IMG_LDFLAGS_AC='-nostdlib -static -Wl,-preload -Wl,-segalign,20'
    TARGET_IMG_BASE_LDOPT="-Wl,-image_base"
+   TARGET_IMG_BASE_LDOPT_ARG_SEP=","
    TARGET_LDFLAGS_OLDMAGIC=""
 elif test x$grub_cv_target_cc_link_format = x-mi386pe || test x$grub_cv_target_cc_link_format = x-mi386pep ; then
   TARGET_APPLE_LINKER=0
   TARGET_LDFLAGS_OLDMAGIC="-Wl,-N"
-  TARGET_IMG_LDSCRIPT='$(top_srcdir)'"/conf/i386-cygwin-img-ld.sc"
+  TARGET_IMG_LDSCRIPT='$(top_srcdir)'"/conf/i386-cygwin-img.lds"
   TARGET_IMG_LDFLAGS="-Wl,-T${TARGET_IMG_LDSCRIPT}"
-  TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-cygwin-img-ld.sc"
+  TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-cygwin-img.lds"
+  TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
+  TARGET_IMG_BASE_LDOPT_ARG_SEP="="
   TARGET_IMG_CFLAGS=
 else
   TARGET_APPLE_LINKER=0
@@ -1468,6 +1471,27 @@ else
   TARGET_IMG_LDSCRIPT=
   TARGET_IMG_LDFLAGS='-Wl,-N'
   TARGET_IMG_LDFLAGS_AC='-Wl,-N'
+  if test "x$target_cpu-$platform" != "xi386-pc"; then
+    AX_CHECK_LINK_FLAG([-Wl,--image-base,0],
+        [TARGET_IMG_BASE_LDOPT="-Wl,--image-base,0 -Wl,-Ttext"],
+        [TARGET_IMG_BASE_LDOPT="-Wl,-Ttext"],
+        [],
+        [AC_LANG_SOURCE([
+    asm (".globl start; start:");
+    asm (".globl _start; _start:");
+    asm (".globl __start; __start:");
+    void __main (void);
+    void __main (void) {}
+    int main (void);
+        ])])
+    TARGET_IMG_BASE_LDOPT_ARG_SEP=","
+  else
+    TARGET_IMG_BASE_LDOPT="-Wl,--defsym=_grub_text_base"
+    TARGET_IMG_BASE_LDOPT_ARG_SEP="="
+    TARGET_IMG_LDSCRIPT='$(top_srcdir)'"/conf/i386-pc-kernel.lds"
+    TARGET_IMG_LDFLAGS="${TARGET_IMG_LDFLAGS} -Wl,-T${TARGET_IMG_LDSCRIPT}"
+    TARGET_IMG_LDFLAGS_AC="-Wl,-T${srcdir}/conf/i386-pc-kernel.lds"
+  fi
   TARGET_IMG_CFLAGS=
 fi
 
@@ -1792,24 +1816,7 @@ LIBS=""
 # Defined in acinclude.m4.
 grub_ASM_USCORE
 grub_PROG_TARGET_CC
-
-# The error message produced by autoconf if autoconf-archive is not installed is
-# quite misleading and not very helpful. So, try point people in the right direction.
-m4_ifndef([AX_CHECK_LINK_FLAG], [m4_fatal([autoconf-archive is missing. You must install it to generate the configure script.])])
-
 if test "x$TARGET_APPLE_LINKER" != x1 ; then
-AX_CHECK_LINK_FLAG([-Wl,--image-base,0x400000],
-    [TARGET_IMG_BASE_LDOPT="-Wl,--image-base"],
-    [TARGET_IMG_BASE_LDOPT="-Wl,-Ttext"],
-    [],
-    [AC_LANG_SOURCE([
-asm (".globl start; start:");
-asm (".globl _start; _start:");
-asm (".globl __start; __start:");
-void __main (void);
-void __main (void) {}
-int main (void);
-    ])])
 grub_PROG_OBJCOPY_ABSOLUTE
 fi
 grub_PROG_LD_BUILD_ID_NONE
@@ -1817,7 +1824,18 @@ if test "x$target_cpu" = xi386; then
   if test "$platform" != emu && test "x$TARGET_APPLE_LINKER" != x1 ; then
     if test ! -z "$TARGET_IMG_LDSCRIPT"; then
       # Check symbols provided by linker script.
-      CFLAGS="$TARGET_CFLAGS -nostdlib ${TARGET_IMG_LDFLAGS_AC} ${TARGET_IMG_BASE_LDOPT},0x8000"
+      target_img_base_ld="${TARGET_IMG_BASE_LDOPT}"
+      case "$target_img_base_ld" in
+        *_grub_text_base)
+          target_img_base_ld="${target_img_base_ld}="
+        ;;
+        *)
+          target_img_base_ld="${target_img_base_ld},"
+        ;;
+      esac
+      target_img_base_ld="${target_img_base_ld}0x8000"
+      CFLAGS="$TARGET_CFLAGS -nostdlib ${TARGET_IMG_LDFLAGS_AC} ${target_img_base_ld}"
+      target_img_base_ld=""
     fi
     grub_CHECK_BSS_START_SYMBOL
     grub_CHECK_END_SYMBOL
@@ -2419,6 +2437,7 @@ AC_SUBST(TARGET_CCASFLAGS)
 AC_SUBST(TARGET_IMG_LDFLAGS)
 AC_SUBST(TARGET_IMG_CFLAGS)
 AC_SUBST(TARGET_IMG_BASE_LDOPT)
+AC_SUBST(TARGET_IMG_BASE_LDOPT_ARG_SEP)
 AC_SUBST(TARGET_APPLE_LINKER)
 
 AC_SUBST(HOST_CFLAGS)
